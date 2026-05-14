@@ -1,0 +1,32 @@
+# Pikafish engine binaries + NNUE (~120 MB, downloaded separately, see README)
+engine/
+
+# Engine analysis logs — verbose, regenerated on every rerun
+output/*.log
+# Sample markdown output of analyze.py — kept locally, not for repo
+output/*.md
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+venv/
+.venv/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs / one-off run output
+*.log
+
+# Claude Code session state
+.claude/
