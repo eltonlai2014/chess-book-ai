@@ -289,6 +289,15 @@ def main():
     # Index
     (OUT_DIR / "index.html").write_text(render_index(games, len(positions)), encoding='utf-8')
     print(f"[write] index.html", file=sys.stderr)
+
+    # Mirror to /docs/ so GitHub Pages can serve it (Pages source dropdown only
+    # lets you pick `/(root)` or `/docs`, not arbitrary subfolders).
+    docs_dir = REPO / "docs"
+    if docs_dir.exists():
+        shutil.rmtree(docs_dir)
+    shutil.copytree(OUT_DIR, docs_dir)
+    print(f"[mirror] {OUT_DIR} → {docs_dir}  (for GitHub Pages)", file=sys.stderr)
+
     print(f"[done] open {OUT_DIR / 'index.html'} in browser", file=sys.stderr)
 
 
