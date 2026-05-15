@@ -146,11 +146,30 @@ header.game-header .meta { font-size: 12px; }
   color: #2c3e50;
 }
 .control-bar button.demo-play:hover:not(:disabled) { background: #d6e8f5; }
+.control-bar button.demo-play.demo-deep {
+  border-color: #8e44ad;
+  background: #f3e8f8;
+  color: #5b2c6f;
+}
+.control-bar button.demo-play.demo-deep:hover:not(:disabled) { background: #e6d2ee; }
 .control-bar button.demo-play.stop {
   border-color: var(--red);
   background: #fdecea;
   color: var(--red);
 }
+
+/* Inline "return to original ply" button shown at end of demo playback. */
+.step-info .restore-btn {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+  border: 1px solid #c0a060;
+  background: #faf3df;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: auto;
+}
+.step-info .restore-btn:hover { background: #f0e3b5; }
 .control-bar .redp {
   margin-left: auto;
   font-size: 12px;

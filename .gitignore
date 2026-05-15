@@ -5,6 +5,8 @@ engine/
 output/*.log
 # Sample markdown output of analyze.py — kept locally, not for repo
 output/*.md
+# Trap review tables — regenerable from list_trap_plies.py
+output/*.csv
 
 # Python
 __pycache__/

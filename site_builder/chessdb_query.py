@@ -32,7 +32,9 @@ def trim_fen(fen: str) -> str:
 def parse_queryall(text: str):
     """chessdb returns 'move:X,score:Y,rank:Z,note:N,winrate:W|move:...'
     or error strings like 'invalid board', 'unknown', 'checkmate', 'nobestmove'."""
-    text = text.strip()
+    # chessdb sometimes appends a stray NUL byte to the response payload;
+    # without stripping, float('50.08\x00') etc. blow up downstream.
+    text = text.replace('\x00', '').strip()
     if not text:
         return None
     if text in ('invalid board', 'unknown', 'checkmate', 'stalemate', 'nobestmove'):
@@ -43,7 +45,7 @@ def parse_queryall(text: str):
         for pair in chunk.split(','):
             if ':' in pair:
                 k, v = pair.split(':', 1)
-                kv[k] = v
+                kv[k] = v.strip()
         if 'move' not in kv:
             continue
         moves.append({

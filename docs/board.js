@@ -387,8 +387,8 @@ function drawChart(svg, plies, activePly) {
 
 // ---------- state ----------
 
-const STATE = { vi: 0, pi: -1, GAME: null, demoTimer: null };
-let SVG_BOARD, SVG_CHART, STEP_INFO, ANNOTE_BOX, NAV_STATUS, DEMO_BTN, REDP_BOX, SELECT;
+const STATE = { vi: 0, pi: -1, GAME: null, demoTimer: null, demoMode: null };
+let SVG_BOARD, SVG_CHART, STEP_INFO, ANNOTE_BOX, NAV_STATUS, DEMO_BTN_S, DEMO_BTN_D, REDP_BOX, SELECT;
 
 function isRedPerspective() { return REDP_BOX.checked; }
 
@@ -397,20 +397,44 @@ function stopDemo() {
     clearTimeout(STATE.demoTimer);
     STATE.demoTimer = null;
   }
-  setDemoMode(false);
+  STATE.demoMode = null;
+  setDemoMode(false, null);
+  updateDemoButtons();
 }
 
-function setDemoMode(active) {
+function setDemoMode(active, mode) {
   document.querySelectorAll(".control-bar .nav-first, .control-bar .nav-prev, .control-bar .nav-next, .control-bar .nav-last, #variation-select").forEach((b) => {
     b.disabled = active;
   });
   if (active) {
-    DEMO_BTN.textContent = "■ 停止演示";
-    DEMO_BTN.classList.add("stop");
+    const activeBtn = mode === 'deep' ? DEMO_BTN_D : DEMO_BTN_S;
+    const otherBtn  = mode === 'deep' ? DEMO_BTN_S : DEMO_BTN_D;
+    activeBtn.textContent = "■ 停止演示";
+    activeBtn.classList.add("stop");
+    activeBtn.disabled = false;
+    otherBtn.disabled = true;
   } else {
-    DEMO_BTN.textContent = "▶ 演示推演";
-    DEMO_BTN.classList.remove("stop");
+    DEMO_BTN_S.textContent = "▶ 演示 淺12";
+    DEMO_BTN_S.classList.remove("stop");
+    DEMO_BTN_D.textContent = "▶ 演示 深22";
+    DEMO_BTN_D.classList.remove("stop");
   }
+}
+
+// Enable/disable demo buttons based on whether the current ply has shallow/deep PV.
+function updateDemoButtons() {
+  if (STATE.demoTimer) return; // managed by setDemoMode during active demo
+  let shallowOk = false, deepOk = false;
+  if (STATE.pi >= 0) {
+    const ply = STATE.GAME.variations[STATE.vi][STATE.pi];
+    const entry = getEntry(ply.fen);
+    if (entry) {
+      shallowOk = !!(entry.pv_detail && entry.pv_detail.length);
+      deepOk    = !!(entry.deep_pv_detail && entry.deep_pv_detail.length);
+    }
+  }
+  DEMO_BTN_S.disabled = !shallowOk;
+  DEMO_BTN_D.disabled = !deepOk;
 }
 
 function updateNavStatus() {
@@ -625,36 +649,46 @@ function activatePly(pi) {
   updateStepInfo(ply, entry);
   renderAnnote(ply);
   updateNavStatus();
+  updateDemoButtons();
 }
 
 // ---------- demo ----------
 
-function startDemo() {
+function startDemo(mode) {
   if (STATE.pi < 0) return;
   const ply = STATE.GAME.variations[STATE.vi][STATE.pi];
   const entry = getEntry(ply.fen);
-  if (!entry || !entry.pv_detail || !entry.pv_detail.length) return;
-  setDemoMode(true);
+  if (!entry) return;
+  const pv = mode === 'deep' ? entry.deep_pv_detail : entry.pv_detail;
+  if (!pv || !pv.length) return;
+  STATE.demoMode = mode;
+  setDemoMode(true, mode);
 
-  const pv = entry.pv_detail;
+  const depthLabel = mode === 'deep' ? '深22' : '淺12';
   let idx = 0;
 
   const step = () => {
     if (idx >= pv.length) {
-      // Finished — leave board on last frame, restore controls
-      setDemoMode(false);
+      // Finished — leave board on last frame, restore controls.
+      // Inline restore button lets the user jump back to the original ply view.
+      setDemoMode(false, null);
       STATE.demoTimer = null;
+      STATE.demoMode = null;
       STEP_INFO.innerHTML = `
-        <span class="item demo-tag">演示結束</span>
+        <span class="item demo-tag">演示結束（${depthLabel}）</span>
         <span class="item">已播放 ${pv.length} 步</span>
         <span class="item"><span class="label">起始</span> ${ply.chinese} <code>${ply.iccs}</code></span>
+        <button class="restore-btn" id="restoreBtn" title="回到原本局面">← 回到局面</button>
       `;
+      const rb = document.getElementById("restoreBtn");
+      if (rb) rb.addEventListener("click", () => activatePly(STATE.pi));
+      updateDemoButtons();
       return;
     }
     const s = pv[idx];
     drawBoard(SVG_BOARD, s.fen_after, s.iccs, null);
     STEP_INFO.innerHTML = `
-      <span class="item demo-tag">▶ 演示 ${idx + 1} / ${pv.length}</span>
+      <span class="item demo-tag">▶ ${depthLabel} ${idx + 1} / ${pv.length}</span>
       <span class="item"><span class="label">本步</span> ${s.chinese} <code>${s.iccs}</code></span>
       <span class="item"><span class="label">起始</span> ${ply.chinese} <code>${ply.iccs}</code></span>
     `;
@@ -673,7 +707,8 @@ function initGamePage(GAME) {
   STEP_INFO = document.getElementById("stepInfo");
   ANNOTE_BOX = document.getElementById("annoteBox");
   NAV_STATUS = document.getElementById("navStatus");
-  DEMO_BTN = document.getElementById("demoBtn");
+  DEMO_BTN_S = document.getElementById("demoBtnShallow");
+  DEMO_BTN_D = document.getElementById("demoBtnDeep");
   REDP_BOX = document.getElementById("redPerspective");
   SELECT = document.getElementById("variation-select");
 
@@ -698,15 +733,19 @@ function initGamePage(GAME) {
     activatePly(total - 1);
   }));
 
-  DEMO_BTN.addEventListener("click", () => {
+  const onDemoClick = (mode) => {
     if (STATE.demoTimer) {
+      // If the running demo is the same mode, stop. Otherwise (shouldn't happen
+      // since other button is disabled during play) treat as restart.
       stopDemo();
-      // restore current ply view
       if (STATE.pi >= 0) activatePly(STATE.pi);
     } else {
-      startDemo();
+      startDemo(mode);
     }
-  });
+  };
+  DEMO_BTN_S.addEventListener("click", () => onDemoClick("shallow"));
+  DEMO_BTN_D.addEventListener("click", () => onDemoClick("deep"));
+  updateDemoButtons();
 
   // Row clicks (all variations — only visible ones reachable, but bind all)
   document.querySelectorAll(".plies-wrap").forEach((wrap) => {

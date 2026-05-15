@@ -104,23 +104,28 @@ def enrich_positions(positions: dict, deep: dict | None = None, chessdb: dict | 
                 for m in cdb['moves']
             ]
 
-        pv_detail = []
-        try:
-            board = ChessBoard(fen)
-            for iccs in e.get('pv') or []:
-                chinese = _iccs_to_chinese(board.to_fen(), iccs)
-                mv = board.move_iccs(iccs)
-                if mv is None:
-                    break
-                board.next_turn()
-                pv_detail.append({
-                    'iccs': iccs,
-                    'chinese': chinese,
-                    'fen_after': board.to_fen(),
-                })
-        except Exception:
-            pass
-        e['pv_detail'] = pv_detail
+        def _build_pv_detail(pv_iccs):
+            out = []
+            try:
+                board = ChessBoard(fen)
+                for iccs in pv_iccs or []:
+                    chinese = _iccs_to_chinese(board.to_fen(), iccs)
+                    mv = board.move_iccs(iccs)
+                    if mv is None:
+                        break
+                    board.next_turn()
+                    out.append({
+                        'iccs': iccs,
+                        'chinese': chinese,
+                        'fen_after': board.to_fen(),
+                    })
+            except Exception:
+                pass
+            return out
+
+        e['pv_detail'] = _build_pv_detail(e.get('pv'))
+        if d:
+            e['deep_pv_detail'] = _build_pv_detail(d.get('pv'))
         enriched[fen] = e
     return enriched
 
@@ -186,7 +191,8 @@ GAME_HTML = """<!DOCTYPE html>
 <span class="nav-status" id="navStatus">第 0 / 0 步</span>
 <button class="nav-next" title="下一步">▶</button>
 <button class="nav-last" title="跳到末步">▶|</button>
-<button class="demo-play" id="demoBtn">▶ 演示推演</button>
+<button class="demo-play" id="demoBtnShallow" data-mode="shallow" title="播放 depth-12 引擎主變">▶ 演示 淺12</button>
+<button class="demo-play demo-deep" id="demoBtnDeep" data-mode="deep" title="播放 depth-22 引擎主變（只有深算過的局面）">▶ 演示 深22</button>
 <label class="redp"><input type="checkbox" id="redPerspective" checked> 紅方視角</label>
 </div>
 <div class="step-info" id="stepInfo">
