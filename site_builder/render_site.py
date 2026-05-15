@@ -45,6 +45,14 @@ def load_deep():
     return json.loads(m.group(1)) if m else {}
 
 
+def load_chessdb():
+    """Cloud database from chessdb.cn (see site_builder/chessdb_query.py)."""
+    path = DATA_DIR / "chessdb_cache.json"
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding='utf-8'))
+
+
 def _iccs_to_chinese(fen: str, iccs: str) -> str:
     """Convert an ICCS move to its Chinese notation using a throwaway board."""
     try:
@@ -55,16 +63,20 @@ def _iccs_to_chinese(fen: str, iccs: str) -> str:
         return iccs
 
 
-def enrich_positions(positions: dict, deep: dict | None = None) -> dict:
-    """Per-position: add `best_chinese`, `pv_detail`, and optional deep-eval fields.
+def enrich_positions(positions: dict, deep: dict | None = None, chessdb: dict | None = None) -> dict:
+    """Per-position: add `best_chinese`, `pv_detail`, and optional deep-eval +
+    chessdb cloud-database fields.
 
     pv_detail enables the JS client to animate the engine's principal variation
     without needing a chess library in the browser.
     Deep-eval fields (`deep_score`, `deep_mate`, `deep_best_iccs`,
     `deep_best_chinese`, `deep_depth`) let the client mark plies where the
     deeper search disagrees with the shallow one.
+    Chessdb fields (`cdb_best_iccs`, `cdb_best_chinese`, `cdb_best_score`,
+    `cdb_best_winrate`, `cdb_moves`) expose the cloud database's view per FEN.
     """
     deep = deep or {}
+    chessdb = chessdb or {}
     enriched = {}
     for fen, entry in positions.items():
         e = dict(entry)
@@ -78,6 +90,19 @@ def enrich_positions(positions: dict, deep: dict | None = None) -> dict:
             e['deep_best_iccs'] = d.get('best_iccs')
             e['deep_best_chinese'] = _iccs_to_chinese(fen, d.get('best_iccs')) if d.get('best_iccs') else None
             e['deep_depth'] = d.get('depth')
+
+        cdb = chessdb.get(fen)
+        if cdb and cdb.get('status') == 'ok' and cdb.get('moves'):
+            top = cdb['moves'][0]
+            e['cdb_best_iccs'] = top.get('iccs')
+            e['cdb_best_chinese'] = _iccs_to_chinese(fen, top.get('iccs')) if top.get('iccs') else None
+            e['cdb_best_score'] = top.get('score')
+            e['cdb_best_winrate'] = top.get('winrate')
+            # Keep all moves so the UI can look up the book move's winrate too.
+            e['cdb_moves'] = [
+                {'iccs': m['iccs'], 'score': m.get('score'), 'winrate': m.get('winrate')}
+                for m in cdb['moves']
+            ]
 
         pv_detail = []
         try:
@@ -128,10 +153,8 @@ INDEX_HTML = """<!DOCTYPE html>
 <body>
 <header><h1>象棋書譜 × Pikafish 對照</h1>
 <p class="meta">共 {n_games} 個棋譜檔，{n_positions} 個唯一局面已分析</p></header>
-<main>
-<ul class="game-list">
+<main class="categories">
 {items}
-</ul>
 </main>
 </body>
 </html>
@@ -205,6 +228,7 @@ def render_variation_table(vi: int, plies: list) -> str:
             f'<td class="score"></td>'
             f'<td class="delta"></td>'
             f'<td class="deep-delta"></td>'
+            f'<td class="cdb"></td>'
             f'<td class="same"></td>'
             f'</tr>'
         )
@@ -213,9 +237,11 @@ def render_variation_table(vi: int, plies: list) -> str:
         f'<div class="plies-wrap" data-var="{vi}"{style}>'
         f'<table class="plies"><thead><tr>'
         '<th>#</th><th>方</th><th>書譜</th>'
-        '<th>引擎首選</th><th>分(cp)</th>'
-        '<th title="depth 12 淺算失分">失分</th>'
-        '<th title="depth 22 深算失分；有時與淺算差很多 = 人類陷阱">深失</th>'
+        '<th>引擎首選</th>'
+        '<th title="局面評分（紅方視角；正=紅優，負=黑優）">分(cp)</th>'
+        '<th title="depth 12 紅方分數變化（正=紅得 cp，負=紅失 cp）">Δ</th>'
+        '<th title="depth 22 紅方分數變化（與 Δ 差很大 = 人類陷阱）">深Δ</th>'
+        '<th title="chessdb.cn 雲庫評分（紅方視角；hover 看最佳替代）">雲庫</th>'
         '<th>同?</th>'
         '</tr></thead><tbody>' + '\n'.join(rows) + '</tbody></table></div>'
     )
@@ -238,20 +264,48 @@ def render_game(game: dict) -> str:
     )
 
 
+def _group_key(rel_path: str) -> str:
+    """Group by chess-category subdirectory. Strip the 'AI\\' provenance prefix
+    so manually-fixed copies sort with their semantic family."""
+    p = rel_path.replace('/', '\\')
+    if p.startswith('AI\\'):
+        p = p[3:]
+    if '\\' in p:
+        return p.rsplit('\\', 1)[0]
+    return '主目錄'
+
+
 def render_index(games: list, n_positions: int) -> str:
-    items = []
-    for g in sorted(games, key=lambda x: x['file']):
-        slug = ascii_slug(g['file'])
-        title = display_title(g['file'])
-        ply_total = sum(len(v) for v in g['variations'])
-        items.append(
-            f'<li><a href="games/{slug}.html">{title}</a> '
-            f'<span class="dim">· {len(g["variations"])} 變例 · {ply_total} 步</span></li>'
+    groups = {}
+    for g in games:
+        key = _group_key(g.get('rel_path', g['file']))
+        groups.setdefault(key, []).append(g)
+
+    # 主目錄 first, then alphabetical Chinese
+    sorted_keys = sorted(groups.keys(), key=lambda k: (k != '主目錄', k))
+
+    sections = []
+    for key in sorted_keys:
+        members = sorted(groups[key], key=lambda x: x['file'])
+        items = []
+        for g in members:
+            slug = ascii_slug(g['file'])
+            title = display_title(g['file'])
+            ply_total = sum(len(v) for v in g['variations'])
+            ai_mark = ' <span class="ai-mark" title="已手動修正註解的版本">✎</span>' if g.get('rel_path', '').replace('/', '\\').startswith('AI\\') else ''
+            items.append(
+                f'<li><a href="games/{slug}.html">{title}</a>{ai_mark} '
+                f'<span class="dim">· {len(g["variations"])} 變例 · {ply_total} 步</span></li>'
+            )
+        sections.append(
+            f'<section class="category"><h2>{key} <span class="dim">({len(members)})</span></h2>'
+            f'<ul class="game-list">{"".join(items)}</ul></section>'
         )
+
     return INDEX_HTML.format(
         n_games=len(games),
         n_positions=n_positions,
-        items='\n'.join(items),
+        items='\n'.join(sections),
     )
 
 
@@ -259,10 +313,11 @@ def main():
     games = load_games()
     positions = load_positions()
     deep = load_deep()
-    print(f"[load] {len(games)} games, {len(positions)} positions, {len(deep)} deep", file=sys.stderr)
+    chessdb = load_chessdb()
+    print(f"[load] {len(games)} games, {len(positions)} positions, {len(deep)} deep, {len(chessdb)} chessdb", file=sys.stderr)
 
-    print("[enrich] computing Chinese notation + PV fen-after + deep overlay", file=sys.stderr)
-    positions = enrich_positions(positions, deep)
+    print("[enrich] computing Chinese notation + PV fen-after + deep + chessdb overlay", file=sys.stderr)
+    positions = enrich_positions(positions, deep, chessdb)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     GAMES_DIR.mkdir(parents=True, exist_ok=True)

@@ -18,8 +18,19 @@ function el(tag, attrs, parent) {
   return node;
 }
 
-function screenX(col) { return 30 + col * 60; }
-function screenY(row) { return 30 + (9 - row) * 60; }
+// Module-level flag so screenY can flip without threading a parameter through
+// every call site. Set by drawBoard at the start of each redraw.
+let CURRENT_REDP = true;
+
+function screenX(col) {
+  // Perspective switch is a true 180° rotation, so X also flips.
+  return CURRENT_REDP ? (30 + col * 60) : (30 + (8 - col) * 60);
+}
+function screenY(row) {
+  // Red perspective: row 0 (red back rank) at bottom of SVG, row 9 at top.
+  // Black perspective: row 0 at top, row 9 at bottom.
+  return CURRENT_REDP ? (30 + (9 - row) * 60) : (30 + row * 60);
+}
 
 function iccsToCoord(iccs) {
   if (!iccs || iccs.length < 4) return null;
@@ -113,30 +124,69 @@ function deltaClass(loss) {
   return "delta-neutral";
 }
 
-function fmtDelta(loss) {
-  if (loss == null) return "";
-  const sign = loss > 0 ? "+" : "";
-  return sign + Math.round(loss);
+function fmtDelta(v) {
+  if (v == null) return "";
+  const sign = v > 0 ? "+" : "";
+  return sign + Math.round(v);
 }
 
-function fmtScore(entry, sideToMove, redPerspective) {
+// All numeric columns use red perspective unconditionally: positive = red is
+// favored, negative = black is favored. The 紅方視角 checkbox now only affects
+// the board orientation (not the table numbers).
+function fmtScore(entry, sideToMove) {
   if (!entry) return { text: "?", cls: "" };
   if (entry.mate != null) {
-    const m = entry.mate;
+    let m = entry.mate;
+    if (sideToMove === "black") m = -m;
     return { text: m > 0 ? `M${m}` : `-M${-m}`, cls: m > 0 ? "score-positive" : "score-negative" };
   }
   let s = entry.score;
   if (s == null) return { text: "?", cls: "" };
-  if (redPerspective && sideToMove === "black") s = -s;
+  if (sideToMove === "black") s = -s;
   return {
     text: (s >= 0 ? "+" : "") + s,
     cls: s >= 0 ? "score-positive" : "score-negative",
   };
 }
 
+// Red-perspective signed delta. Positive = red gained cp between i and i+1;
+// negative = red lost cp. Magnitude regardless of which side moved.
+function redDelta(plies, i) {
+  if (i < 0 || i >= plies.length - 1) return null;
+  const p = plies[i], pn = plies[i + 1];
+  if (!p.fen || !pn.fen) return null;
+  const r  = redPerspectiveScore(getEntry(p.fen),  p.side);
+  const rn = redPerspectiveScore(getEntry(pn.fen), pn.side);
+  if (r == null || rn == null) return null;
+  return rn - r;
+}
+
+function deepRedDelta(plies, i) {
+  if (i < 0 || i >= plies.length - 1) return null;
+  const p = plies[i], pn = plies[i + 1];
+  if (!p.fen || !pn.fen) return null;
+  const r  = redPerspectiveDeepScore(p.fen,  p.side);
+  const rn = redPerspectiveDeepScore(pn.fen, pn.side);
+  if (r == null || rn == null) return null;
+  return rn - r;
+}
+
+// Color class for any red-POV signed value (used by 分, Δ, 深Δ, 雲庫 columns).
+function deltaSignClass(v) {
+  if (v == null) return "";
+  const a = Math.abs(v);
+  if (a <= 50) return "delta-neutral";
+  const sign = v > 0 ? "pos" : "neg";
+  const mag = a > 100 ? "strong" : "mild";
+  return `delta-${sign}-${mag}`;
+}
+
 // ---------- board drawing (SVG) ----------
 
 function drawBoard(svg, fen, bookMove, engineMove) {
+  // Latch perspective for this redraw so screenY (called many times below)
+  // doesn't re-poll the checkbox each call.
+  CURRENT_REDP = isRedPerspective();
   while (svg.firstChild) svg.removeChild(svg.firstChild);
 
   // Wood gradient + subtle grain pattern
@@ -378,14 +428,14 @@ function updateStepInfo(ply, entry) {
     STEP_INFO.innerHTML = `<span class="item"><span class="label">書譜</span> ${ply.chinese} <code>${ply.iccs}</code></span><span class="placeholder">此局面未經分析</span>`;
     return;
   }
-  const sc = fmtScore(entry, ply.side, isRedPerspective());
+  const sc = fmtScore(entry, ply.side);
   const bestCn = entry.best_chinese || entry.best_iccs || "?";
   const same = entry.best_iccs === ply.iccs;
   const sideLabel = ply.side === "red" ? "紅" : "黑";
-  const loss = deltaCp(STATE.GAME.variations[STATE.vi], STATE.pi);
-  const lossSpan = loss == null
+  const d = redDelta(STATE.GAME.variations[STATE.vi], STATE.pi);
+  const lossSpan = d == null
     ? ''
-    : `<span class="item"><span class="label">失分</span> <span class="${deltaClass(loss)}">${fmtDelta(loss)}</span></span>`;
+    : `<span class="item"><span class="label">Δ</span> <span class="${deltaSignClass(d)}">${fmtDelta(d)}</span></span>`;
   STEP_INFO.innerHTML = `
     <span class="item"><span class="label">${sideLabel}方走子</span></span>
     <span class="item"><span class="label">書譜</span> ${ply.chinese} <code>${ply.iccs}</code></span>
@@ -398,7 +448,7 @@ function updateStepInfo(ply, entry) {
 
 function annotateTable(vi) {
   // Fill engine columns + annote indicator in the now-visible variation's table.
-  const redP = isRedPerspective();
+  // ALL numeric columns use red-POV signed cp (positive = red favored).
   const plies = STATE.GAME.variations[vi];
   document.querySelectorAll(`.plies-wrap[data-var="${vi}"] tbody tr[data-fen]`).forEach((tr) => {
     const pi = parseInt(tr.dataset.ply, 10);
@@ -421,35 +471,73 @@ function annotateTable(vi) {
     if (!entry) return;
     const bestCn = entry.best_chinese || entry.best_iccs || "?";
     tr.querySelector(".eng-best").innerHTML = `${bestCn} <code class="tiny">${entry.best_iccs || ""}</code>`;
-    const sc = fmtScore(entry, ply.side, redP);
+    const sc = fmtScore(entry, ply.side);
     const scCell = tr.querySelector(".score");
     scCell.textContent = sc.text;
     scCell.className = "score " + sc.cls;
-    const loss = deltaCp(plies, pi);
-    const dCell = tr.querySelector(".delta");
-    dCell.textContent = fmtDelta(loss);
-    dCell.className = "delta " + deltaClass(loss);
 
-    // Deep-eval overlay (depth-22) — fills "深失" column and flags human traps.
-    // Plies 1..15 = opening theory: comparing book against engine here is
-    // misframed — "avoiding all engine-preferred moves makes it a different
-    // opening." So hide the deep value entirely and skip trap marking.
+    const dShallow = redDelta(plies, pi);
+    const dCell = tr.querySelector(".delta");
+    dCell.textContent = fmtDelta(dShallow);
+    dCell.className = "delta " + deltaSignClass(dShallow);
+
+    // Deep-eval overlay (depth-22). Plies 1..15 hidden — opening theory comparison
+    // is misframed (avoiding every engine-preferred move = different opening).
     const SKIP_OPENING = 15;
-    const deepLoss = deepDeltaCp(plies, pi);
+    const dDeep = deepRedDelta(plies, pi);
     const pastOpening = pi >= SKIP_OPENING;
     const ddCell = tr.querySelector(".deep-delta");
     if (ddCell) {
-      if (!pastOpening || deepLoss == null) {
+      if (!pastOpening || dDeep == null) {
         ddCell.textContent = "";
         ddCell.className = "deep-delta";
       } else {
-        ddCell.textContent = fmtDelta(deepLoss);
-        ddCell.className = "deep-delta " + deltaClass(deepLoss);
+        ddCell.textContent = fmtDelta(dDeep);
+        ddCell.className = "deep-delta " + deltaSignClass(dDeep);
       }
     }
-    const shallowOk = loss != null && loss < 50;
-    const deepBad   = deepLoss != null && deepLoss > 100;
+
+    // Trap detection still uses mover-POV magnitude (positive = mover lost cp):
+    // a red ply is trapped when red lost lots; a black ply when black lost lots.
+    // In red-POV signed terms: red lost = dDeep << 0 on red row, black lost = dDeep >> 0 on black row.
+    const moverDeep = ply.side === "red" ? -dDeep : dDeep;
+    const moverShallow = ply.side === "red" ? -dShallow : dShallow;
+    const shallowOk = moverShallow != null && moverShallow < 50;
+    const deepBad   = moverDeep != null && moverDeep > 100;
     tr.classList.toggle("ply-trap", shallowOk && deepBad && pastOpening);
+
+    // chessdb cloud-database overlay — score in red POV (chessdb returns mover-POV,
+    // so flip for black plies). Hover shows full book vs cloud-best comparison.
+    const cdbCell = tr.querySelector(".cdb");
+    if (cdbCell) {
+      const cdbMoves = entry.cdb_moves;
+      if (!cdbMoves || cdbMoves.length === 0) {
+        cdbCell.textContent = "";
+        cdbCell.className = "cdb";
+        cdbCell.removeAttribute("title");
+      } else {
+        const flipSign = ply.side === "black" ? -1 : 1;
+        const bookEntry = cdbMoves.find((m) => m.iccs === ply.iccs);
+        const best = cdbMoves[0];
+        const matchesBest = best.iccs === ply.iccs;
+        const fmtScoreLocal = (s) => s == null ? "?" : (s >= 0 ? "+" : "") + s;
+        const fmtWr = (w) => w == null ? "?" : Math.round(w) + "%";
+        const bestCn = entry.cdb_best_chinese || best.iccs;
+        const bestRedScore = best.score == null ? null : best.score * flipSign;
+        if (bookEntry && bookEntry.score != null) {
+          const sRed = bookEntry.score * flipSign;
+          cdbCell.textContent = fmtScoreLocal(sRed);
+          cdbCell.className = "cdb " + deltaSignClass(sRed);
+          cdbCell.title = matchesBest
+            ? `雲庫推薦同步：${bestCn} ${fmtScoreLocal(bestRedScore)} (勝率 ${fmtWr(best.winrate)})`
+            : `書譜：${ply.iccs} ${fmtScoreLocal(sRed)} (勝率 ${fmtWr(bookEntry.winrate)})\n雲庫最佳：${bestCn} ${fmtScoreLocal(bestRedScore)} (勝率 ${fmtWr(best.winrate)})\n差距：${(best.score - bookEntry.score) * flipSign} cp（紅方視角）`;
+        } else {
+          cdbCell.textContent = "—";
+          cdbCell.className = "cdb cdb-missing";
+          cdbCell.title = `書譜步雲庫無資料\n雲庫最佳：${bestCn} ${fmtScoreLocal(bestRedScore)} (勝率 ${fmtWr(best.winrate)})`;
+        }
+      }
+    }
 
     const same = entry.best_iccs === ply.iccs;
     tr.querySelector(".same").textContent = same ? "同" : "異";
@@ -665,11 +753,14 @@ function initGamePage(GAME) {
   });
 
   REDP_BOX.addEventListener("change", () => {
-    annotateTable(STATE.vi);
-    drawChart(SVG_CHART, STATE.GAME.variations[STATE.vi], STATE.pi);
+    // Checkbox only flips the board orientation. All numeric columns are
+    // permanently in red-POV; they don't change when this toggles.
     if (STATE.pi >= 0) {
       const ply = STATE.GAME.variations[STATE.vi][STATE.pi];
-      updateStepInfo(ply, getEntry(ply.fen));
+      const entry = getEntry(ply.fen);
+      drawBoard(SVG_BOARD, ply.fen_after || ply.fen, ply.iccs, entry ? entry.best_iccs : null);
+    } else {
+      drawBoard(SVG_BOARD, STATE.GAME.init_fen, null, null);
     }
   });
 
