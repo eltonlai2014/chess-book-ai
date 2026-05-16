@@ -181,68 +181,330 @@ function deltaSignClass(v) {
   return `delta-${sign}-${mag}`;
 }
 
+// ---------- board styles ----------
+// Independent of page theme. Read from <html data-board="...">; persisted in
+// localStorage as "chessbookBoard". Switching is via a picker injected into
+// the game header by initGamePage. Adding a new style: add an entry below
+// and a font key; the picker re-reads BOARD_STYLES automatically.
+
+// Piece-character fonts. The `text=` URL parameter restricts the Google Fonts
+// subset to the 14 piece glyphs + 楚河漢界, keeping the load <10KB even for
+// huge fonts like Ma Shan Zheng.
+const PIECE_CHARS_SUBSET = "帥仕相傌俥炮兵將士象馬車砲卒楚河漢界";
+
+// Default = system serif (Songti / PMingLiU / Noto Serif fallback chain via the
+// generic `serif` family). Originally we experimented with Ma Shan Zheng /
+// ZCOOL XiaoWei but master felt they looked off, so all styles now share the
+// classic system serif. The lazy-loader is kept for easy future re-enable.
+const PIECE_FONTS = {
+  classic: {
+    family: "serif",
+    weight: "bold",
+    dy: 10,
+    googleUrl: null,
+  },
+};
+
+const _loadedFonts = new Set();
+function ensurePieceFontLoaded(key) {
+  const f = PIECE_FONTS[key];
+  if (!f || !f.googleUrl || _loadedFonts.has(key)) return;
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = f.googleUrl;
+  document.head.appendChild(link);
+  _loadedFonts.add(key);
+}
+
+const BOARD_STYLES = {
+  traditional: {
+    label: "傳統手繪",
+    font: "classic",
+    background: { kind: "wood" },
+    grid:   { stroke: "#4a3010", width: 1, outer: 3 },
+    coord:  { color: "#5a3a1a", font: "serif" },
+    river:  { color: "#5a3a1a", style: "italic" },
+    // Pieces now use radial-gradient disks for a 3D feel (highlight upper-left,
+    // shadow lower-right) instead of flat fills.
+    red:    { fill: "#fff5db", border: "#8b1a0e", innerRing: "#c0392b", text: "#c0392b",
+              grad: { from: "#fff8e8", to: "#e6c47e" } },
+    black:  { fill: "#222",    border: "#000",    innerRing: "#888",    text: "#f5f5f5",
+              grad: { from: "#5a5a5a", to: "#0c0c0c" } },
+    piece:  { shadow: "strong", innerRing: true, bevel: true, gradient: true },
+    lastMove: { kind: "box",  color: "#2980b9" },
+    suggest:  { kind: "ring", color: "#e67e22" },
+  },
+  // 雅石回紋: stone-cream board with a Chinese 回紋 meander border in sepia and
+  // pieces that share the same cream disk + sepia border. Inspired by the
+  // "空城計" reference — feels archaeological / textbook-classical.
+  stone: {
+    label: "雅石回紋",
+    font: "classic",
+    background: { kind: "stone", color: "#e9dbb4", grain: "#7a5a2a" },
+    // The meander now also carries band + bevel info so it reads as a raised
+    // ornament instead of a flat printed line.
+    grid: {
+      stroke: "#5a3a1a", width: 0.9, outer: 1.5,
+      meander: {
+        ink: "#3a2510",            // meander stroke colour
+        band: "#cfa46b",           // raised frame face colour
+        highlight: "#f4dba6",      // outer-edge highlight
+        shadow: "#5e3a14",         // inner-edge shadow
+        bandWidth: 18,
+      },
+    },
+    coord:  { color: "#7a5a2a", font: "serif" },
+    river:  { color: "#5a3a1a", style: "normal" },
+    // Both sides are coloured wooden discs with cream characters (matches the
+    // "空城計"-style reference: red side a dark cherry-wood, black side a deep
+    // slate, neither washed out against the stone ground).
+    red:    { fill: "#9a2818", border: "#4a0c08", innerRing: null, text: "#fbe7c2",
+              grad: { from: "#c0392b", to: "#5a0c0a" } },
+    black:  { fill: "#2a2a2a", border: "#0c0c0c", innerRing: null, text: "#fbe7c2",
+              grad: { from: "#5a5a5a", to: "#0c0c0c" } },
+    piece:  { shadow: "strong", innerRing: false, bevel: true, gradient: true },
+    lastMove: { kind: "ring", color: "#d4a043" },
+    suggest:  { kind: "ring", color: "#c0392b" },
+  },
+  // 鎏金歲月: premium dark slate with gold grid lines and a gold-rule outer
+  // frame; deep crimson lacquer for red pieces and gunmetal silver for black.
+  // The most striking option — feels like a high-end set.
+  gilded: {
+    label: "鎏金歲月",
+    font: "classic",
+    background: { kind: "darkmetal", color: "#1a1612" },
+    grid:   { stroke: "#c89244", width: 0.9, outer: 1.5, doubleFrame: true, frameColor: "#d4a043" },
+    coord:  { color: "#c89244", font: "serif" },
+    river:  { color: "#d4a043", style: "normal" },
+    red:    { fill: "#7a1818", border: "#3a0c0c", innerRing: null, text: "#fbeed1",
+              grad: { from: "#c0392b", to: "#5a0c0c" } },
+    black:  { fill: "#2a2a2a", border: "#0c0c0c", innerRing: null, text: "#fbeed1",
+              grad: { from: "#7a7a7a", to: "#1a1a1a" } },
+    piece:  { shadow: "strong", innerRing: false, bevel: true, gradient: true },
+    lastMove: { kind: "ring", color: "#d4a043" },
+    suggest:  { kind: "ring", color: "#e26054" },
+  },
+};
+
+function currentBoardStyle() {
+  const name = document.documentElement.dataset.board || "traditional";
+  return BOARD_STYLES[name] || BOARD_STYLES.traditional;
+}
+
+// Draws a classical 回紋 (meander / key fret) frame as a raised ornament
+// around the play area: solid band ring + outer highlight + inner shadow
+// for 3D depth, then the meander pattern stroked on top in deep ink.
+// `opts` shape: { ink, band, highlight, shadow, bandWidth }.
+// String value is accepted for back-compat (treated as { ink: <string> }).
+function drawMeanderFrame(svg, opts) {
+  if (typeof opts === "string") opts = { ink: opts };
+  const ink = opts.ink || "#3a2510";
+  const band = opts.band;
+  const highlight = opts.highlight;
+  const shadow = opts.shadow;
+  const B = opts.bandWidth || 18;
+  const W = 540, H = 600;
+
+  // 1) Solid band ring (hollow rectangle via evenodd fill rule). Painted only
+  //    when band colour is provided; older string-form callers stay flat.
+  if (band) {
+    const ringPath = `M 0 0 H ${W} V ${H} H 0 Z M ${B} ${B} V ${H - B} H ${W - B} V ${B} Z`;
+    el("path", { d: ringPath, fill: band, "fill-rule": "evenodd" }, svg);
+    // Outer-edge highlight (warm light catching the raised face)
+    if (highlight) {
+      el("rect", {
+        x: 0.5, y: 0.5, width: W - 1, height: H - 1,
+        fill: "none", stroke: highlight, "stroke-width": 1.2, "stroke-opacity": 0.85,
+      }, svg);
+    }
+    // Inner-edge shadow (recessed lip toward the play area)
+    if (shadow) {
+      el("rect", {
+        x: B - 0.5, y: B - 0.5, width: W - 2 * B + 1, height: H - 2 * B + 1,
+        fill: "none", stroke: shadow, "stroke-width": 1.4, "stroke-opacity": 0.75,
+      }, svg);
+    }
+  }
+
+  // 2) Meander unit (18 × 9): two parallel rules + an inner spiral hook.
+  const unitPath = "M 0 0 H 18 M 0 9 H 18 M 4 1 V 7 H 14 V 3 H 8 V 5";
+  const yTop = (B - 9) / 2;             // centre meander vertically in top band
+  const yBot = H - B + (B - 9) / 2;     // ... and bottom band
+  const lx = (B - 9) / 2;               // left band: rotate(90) places unit at [lx, lx+9]
+  const rx = W - (B - 9) / 2;           // right band: rotate(-90) places unit at [rx-9, rx]
+  const stroke = { stroke: ink, "stroke-width": 0.9, fill: "none", "stroke-opacity": 0.92 };
+  const engrave = highlight ? { stroke: highlight, "stroke-width": 0.9, fill: "none", "stroke-opacity": 0.55 } : null;
+
+  // Top + bottom bands: tile units edge-to-edge across the play width.
+  for (let x = B; x + 18 <= W - B; x += 18) {
+    if (engrave) {
+      el("path", { d: unitPath, ...engrave, transform: `translate(${x}, ${yTop + 1})` }, svg);
+      el("path", { d: unitPath, ...engrave, transform: `translate(${x}, ${yBot + 1})` }, svg);
+    }
+    el("path", { d: unitPath, ...stroke, transform: `translate(${x}, ${yTop})` }, svg);
+    el("path", { d: unitPath, ...stroke, transform: `translate(${x}, ${yBot})` }, svg);
+  }
+  // Left + right bands: rotated units, tiled edge-to-edge down the play height.
+  for (let y = B + 18; y <= H - B; y += 18) {
+    if (engrave) {
+      el("path", { d: unitPath, ...engrave, transform: `translate(${lx + 1}, ${y}) rotate(90)` }, svg);
+      el("path", { d: unitPath, ...engrave, transform: `translate(${rx + 1}, ${y - 18}) rotate(-90)` }, svg);
+    }
+    el("path", { d: unitPath, ...stroke, transform: `translate(${lx}, ${y}) rotate(90)` }, svg);
+    el("path", { d: unitPath, ...stroke, transform: `translate(${rx}, ${y - 18}) rotate(-90)` }, svg);
+  }
+}
+
 // ---------- board drawing (SVG) ----------
 
 function drawBoard(svg, fen, bookMove, engineMove) {
   // Latch perspective for this redraw so screenY (called many times below)
   // doesn't re-poll the checkbox each call.
   CURRENT_REDP = isRedPerspective();
+  const S = currentBoardStyle();
   while (svg.firstChild) svg.removeChild(svg.firstChild);
 
-  // Wood gradient + subtle grain pattern
+  // Always create a single defs block — backgrounds, pieces and shadows all
+  // share it. Per-style addons (gradients, patterns) get appended below.
   const defs = el("defs", {}, svg);
-  const grad = el("linearGradient", { id: "wood", x1: "0", y1: "0", x2: "0", y2: "1" }, defs);
-  el("stop", { offset: "0%",   "stop-color": "#cba16b" }, grad);
-  el("stop", { offset: "50%",  "stop-color": "#e6c79b" }, grad);
-  el("stop", { offset: "100%", "stop-color": "#cba16b" }, grad);
-  const pat = el("pattern", { id: "grain", x: "0", y: "0", width: "120", height: "8", patternUnits: "userSpaceOnUse" }, defs);
-  el("line", { x1: 0, y1: 4, x2: 120, y2: 4, stroke: "rgba(110,70,30,0.07)", "stroke-width": 0.6 }, pat);
-  el("line", { x1: 0, y1: 7, x2: 120, y2: 7, stroke: "rgba(110,70,30,0.04)", "stroke-width": 0.4 }, pat);
 
-  el("rect", { x: 0, y: 0, width: 540, height: 600, fill: "url(#wood)" }, svg);
-  el("rect", { x: 0, y: 0, width: 540, height: 600, fill: "url(#grain)" }, svg);
+  // Piece radial-gradient registration (used by both red and black where
+  // `red.grad` / `black.grad` are defined). Highlight upper-left, shadow
+  // lower-right — gives an organic 3D bead feel.
+  if (S.piece.gradient) {
+    for (const side of ["red", "black"]) {
+      const g = S[side].grad;
+      if (!g) continue;
+      const rg = el("radialGradient", {
+        id: `pg-${side}`,
+        cx: "32%", cy: "30%", r: "75%",
+      }, defs);
+      el("stop", { offset: "0%",   "stop-color": g.from }, rg);
+      el("stop", { offset: "100%", "stop-color": g.to   }, rg);
+    }
+  }
 
-  // Last-move highlight: blue rounded box at the destination square (XQStudio style)
+  // Soft elliptical drop-shadow for pieces (radial, fades to transparent).
+  if (S.piece.shadow) {
+    const sg = el("radialGradient", { id: "pshadow", cx: "50%", cy: "50%", r: "50%" }, defs);
+    el("stop", { offset: "0%",   "stop-color": "rgba(0,0,0,0.45)" }, sg);
+    el("stop", { offset: "70%",  "stop-color": "rgba(0,0,0,0.18)" }, sg);
+    el("stop", { offset: "100%", "stop-color": "rgba(0,0,0,0)"    }, sg);
+  }
+
+  // Background
+  if (S.background.kind === "wood") {
+    const grad = el("linearGradient", { id: "wood", x1: "0", y1: "0", x2: "0", y2: "1" }, defs);
+    el("stop", { offset: "0%",   "stop-color": "#cba16b" }, grad);
+    el("stop", { offset: "50%",  "stop-color": "#e6c79b" }, grad);
+    el("stop", { offset: "100%", "stop-color": "#cba16b" }, grad);
+    const pat = el("pattern", { id: "grain", x: "0", y: "0", width: "120", height: "8", patternUnits: "userSpaceOnUse" }, defs);
+    el("line", { x1: 0, y1: 4, x2: 120, y2: 4, stroke: "rgba(110,70,30,0.07)", "stroke-width": 0.6 }, pat);
+    el("line", { x1: 0, y1: 7, x2: 120, y2: 7, stroke: "rgba(110,70,30,0.04)", "stroke-width": 0.4 }, pat);
+    el("rect", { x: 0, y: 0, width: 540, height: 600, fill: "url(#wood)" }, svg);
+    el("rect", { x: 0, y: 0, width: 540, height: 600, fill: "url(#grain)" }, svg);
+  } else if (S.background.kind === "paper") {
+    const pat = el("pattern", { id: "papergrain", x: "0", y: "0", width: "14", height: "14", patternUnits: "userSpaceOnUse" }, defs);
+    el("circle", { cx: 3, cy: 3, r: 0.5, fill: S.background.noise, "fill-opacity": 0.18 }, pat);
+    el("circle", { cx: 9, cy: 8, r: 0.4, fill: S.background.noise, "fill-opacity": 0.12 }, pat);
+    el("circle", { cx: 12, cy: 12, r: 0.35, fill: S.background.noise, "fill-opacity": 0.15 }, pat);
+    el("rect", { x: 0, y: 0, width: 540, height: 600, fill: S.background.color }, svg);
+    el("rect", { x: 0, y: 0, width: 540, height: 600, fill: "url(#papergrain)" }, svg);
+  } else if (S.background.kind === "stone") {
+    // Mottled stone: a coarse dot pattern over a cream base, plus a vignette
+    // gradient to add depth at the corners.
+    const pat = el("pattern", { id: "stonegrain", x: "0", y: "0", width: "9", height: "9", patternUnits: "userSpaceOnUse" }, defs);
+    el("circle", { cx: 2, cy: 2, r: 0.6, fill: S.background.grain, "fill-opacity": 0.20 }, pat);
+    el("circle", { cx: 6, cy: 5, r: 0.4, fill: S.background.grain, "fill-opacity": 0.14 }, pat);
+    el("circle", { cx: 4, cy: 7, r: 0.5, fill: S.background.grain, "fill-opacity": 0.10 }, pat);
+    const vg = el("radialGradient", { id: "stonevg", cx: "50%", cy: "50%", r: "70%" }, defs);
+    el("stop", { offset: "55%", "stop-color": "rgba(0,0,0,0)" }, vg);
+    el("stop", { offset: "100%", "stop-color": "rgba(70,40,10,0.18)" }, vg);
+    el("rect", { x: 0, y: 0, width: 540, height: 600, fill: S.background.color }, svg);
+    el("rect", { x: 0, y: 0, width: 540, height: 600, fill: "url(#stonegrain)" }, svg);
+    el("rect", { x: 0, y: 0, width: 540, height: 600, fill: "url(#stonevg)" }, svg);
+  } else if (S.background.kind === "darkmetal") {
+    // Deep slate ground with a subtle metallic sheen + soft top/bottom shadow.
+    const grad = el("linearGradient", { id: "darkmetal", x1: "0", y1: "0", x2: "0", y2: "1" }, defs);
+    el("stop", { offset: "0%",   "stop-color": "#241d16" }, grad);
+    el("stop", { offset: "45%",  "stop-color": "#1a1612" }, grad);
+    el("stop", { offset: "100%", "stop-color": "#0e0b08" }, grad);
+    el("rect", { x: 0, y: 0, width: 540, height: 600, fill: "url(#darkmetal)" }, svg);
+    // Brushed-metal hatching
+    const pat = el("pattern", { id: "hatch", x: "0", y: "0", width: "60", height: "3", patternUnits: "userSpaceOnUse" }, defs);
+    el("line", { x1: 0, y1: 1.5, x2: 60, y2: 1.5, stroke: "rgba(212,160,67,0.05)", "stroke-width": 0.5 }, pat);
+    el("rect", { x: 0, y: 0, width: 540, height: 600, fill: "url(#hatch)" }, svg);
+  } else {
+    el("rect", { x: 0, y: 0, width: 540, height: 600, fill: S.background.color }, svg);
+  }
+
+  // Last-move highlight: from/to indicators in the per-style shape.
   if (bookMove) {
     const c = iccsToCoord(bookMove);
     if (c) {
-      // origin: faint blue ring
-      el("rect", {
-        x: screenX(c.from.col) - 26, y: screenY(c.from.row) - 26, width: 52, height: 52,
-        rx: 4, ry: 4, fill: "none", stroke: "#2980b9", "stroke-width": 1.5, "stroke-opacity": 0.4,
-        "stroke-dasharray": "4 3",
-      }, svg);
-      // destination: solid blue box
-      el("rect", {
-        x: screenX(c.to.col) - 28, y: screenY(c.to.row) - 28, width: 56, height: 56,
-        rx: 4, ry: 4, fill: "none", stroke: "#2980b9", "stroke-width": 2.5,
-      }, svg);
+      const fx = screenX(c.from.col), fy = screenY(c.from.row);
+      const tx = screenX(c.to.col),   ty = screenY(c.to.row);
+      if (S.lastMove.kind === "box") {
+        el("rect", {
+          x: fx - 26, y: fy - 26, width: 52, height: 52,
+          rx: 4, ry: 4, fill: "none", stroke: S.lastMove.color, "stroke-width": 1.5, "stroke-opacity": 0.4,
+          "stroke-dasharray": "4 3",
+        }, svg);
+        el("rect", {
+          x: tx - 28, y: ty - 28, width: 56, height: 56,
+          rx: 4, ry: 4, fill: "none", stroke: S.lastMove.color, "stroke-width": 2.5,
+        }, svg);
+      } else if (S.lastMove.kind === "ring") {
+        el("circle", {
+          cx: fx, cy: fy, r: 28,
+          fill: "none", stroke: S.lastMove.color, "stroke-width": 1.5, "stroke-opacity": 0.4,
+          "stroke-dasharray": "4 3",
+        }, svg);
+        el("circle", {
+          cx: tx, cy: ty, r: 30,
+          fill: "none", stroke: S.lastMove.color, "stroke-width": 2,
+        }, svg);
+      } else if (S.lastMove.kind === "dot") {
+        el("circle", { cx: fx, cy: fy, r: 6, fill: S.lastMove.color, opacity: 0.35 }, svg);
+        el("circle", { cx: tx, cy: ty, r: 9, fill: S.lastMove.color }, svg);
+      }
     }
   }
-  // Engine suggestion: dashed orange ring at destination (so it doesn't fight the blue last-move box)
+  // Engine suggestion: dashed ring at destination (kept consistent across styles)
   if (engineMove && engineMove !== bookMove) {
     const c = iccsToCoord(engineMove);
     if (c) {
       el("circle", {
         cx: screenX(c.to.col), cy: screenY(c.to.row), r: 28,
-        fill: "none", stroke: "#e67e22", "stroke-width": 2, "stroke-dasharray": "5 4",
+        fill: "none", stroke: S.suggest.color, "stroke-width": 2, "stroke-dasharray": "5 4",
       }, svg);
     }
   }
 
   // Grid lines
+  const gw = S.grid.width;
   for (let r = 0; r <= 9; r++) {
-    el("line", { x1: 30, y1: 30 + r * 60, x2: 510, y2: 30 + r * 60, stroke: "#4a3010", "stroke-width": 1 }, svg);
+    el("line", { x1: 30, y1: 30 + r * 60, x2: 510, y2: 30 + r * 60, stroke: S.grid.stroke, "stroke-width": gw }, svg);
   }
   for (let c = 0; c <= 8; c++) {
     if (c === 0 || c === 8) {
-      el("line", { x1: 30 + c * 60, y1: 30, x2: 30 + c * 60, y2: 570, stroke: "#4a3010", "stroke-width": 1 }, svg);
+      el("line", { x1: 30 + c * 60, y1: 30, x2: 30 + c * 60, y2: 570, stroke: S.grid.stroke, "stroke-width": gw }, svg);
     } else {
-      el("line", { x1: 30 + c * 60, y1: 30,  x2: 30 + c * 60, y2: 270, stroke: "#4a3010", "stroke-width": 1 }, svg);
-      el("line", { x1: 30 + c * 60, y1: 330, x2: 30 + c * 60, y2: 570, stroke: "#4a3010", "stroke-width": 1 }, svg);
+      el("line", { x1: 30 + c * 60, y1: 30,  x2: 30 + c * 60, y2: 270, stroke: S.grid.stroke, "stroke-width": gw }, svg);
+      el("line", { x1: 30 + c * 60, y1: 330, x2: 30 + c * 60, y2: 570, stroke: S.grid.stroke, "stroke-width": gw }, svg);
     }
   }
-  el("rect", { x: 30, y: 30, width: 480, height: 540, fill: "none", stroke: "#4a3010", "stroke-width": 3 }, svg);
+  const frameColor = S.grid.frameColor || S.grid.stroke;
+  el("rect", { x: 30, y: 30, width: 480, height: 540, fill: "none", stroke: frameColor, "stroke-width": S.grid.outer }, svg);
+  // Optional second rule outside the play area (vintage / metallic look).
+  if (S.grid.doubleFrame) {
+    el("rect", { x: 21, y: 21, width: 498, height: 558, fill: "none", stroke: frameColor, "stroke-width": 1, "stroke-opacity": 0.85 }, svg);
+    el("rect", { x: 17, y: 17, width: 506, height: 566, fill: "none", stroke: frameColor, "stroke-width": 0.5, "stroke-opacity": 0.55 }, svg);
+  }
+  // Optional 回紋 meander key-pattern along the outer band.
+  if (S.grid.meander) {
+    drawMeanderFrame(svg, S.grid.meander);
+  }
 
   // Palace diagonals
   const palace = [
@@ -252,23 +514,27 @@ function drawBoard(svg, fen, bookMove, engineMove) {
     [screenX(5), screenY(9), screenX(3), screenY(7)],
   ];
   for (const [x1, y1, x2, y2] of palace) {
-    el("line", { x1, y1, x2, y2, stroke: "#4a3010", "stroke-width": 1 }, svg);
+    el("line", { x1, y1, x2, y2, stroke: S.grid.stroke, "stroke-width": gw }, svg);
   }
 
   // River text
-  const river = el("text", { x: 270, y: 308, "text-anchor": "middle", "font-size": 24, fill: "#5a3a1a", "font-family": "serif", "letter-spacing": 38, "font-style": "italic" }, svg);
+  const river = el("text", {
+    x: 270, y: 308, "text-anchor": "middle", "font-size": 24,
+    fill: S.river.color, "font-family": "serif", "letter-spacing": 38,
+    "font-style": S.river.style,
+  }, svg);
   river.textContent = "楚河      漢界";
 
-  // Coordinate labels above (col 1..9 from red's left perspective = ICCS col a..i)
+  // Coordinate labels (col 1..9 from red's left perspective = ICCS col a..i)
   for (let c = 0; c <= 8; c++) {
     const x = screenX(c);
-    const labelTop = el("text", { x, y: 18, "text-anchor": "middle", "font-size": 11, fill: "#5a3a1a", "font-family": "serif" }, svg);
+    const labelTop = el("text", { x, y: 18, "text-anchor": "middle", "font-size": 11, fill: S.coord.color, "font-family": S.coord.font }, svg);
     labelTop.textContent = c + 1;
-    const labelBot = el("text", { x, y: 590, "text-anchor": "middle", "font-size": 11, fill: "#5a3a1a", "font-family": "serif" }, svg);
+    const labelBot = el("text", { x, y: 590, "text-anchor": "middle", "font-size": 11, fill: S.coord.color, "font-family": S.coord.font }, svg);
     labelBot.textContent = c + 1;
   }
 
-  // Pieces (traditional style: red = cream disk with red border + red text; black = dark disk + white text)
+  // Pieces — style-driven disk + character
   const parsed = fen ? parseFen(fen) : null;
   if (parsed) {
     for (let r = 0; r <= 9; r++) {
@@ -277,32 +543,98 @@ function drawBoard(svg, fen, bookMove, engineMove) {
         if (!p) continue;
         const isRed = p === p.toUpperCase();
         const cx = screenX(c), cy = screenY(r);
-        // Drop shadow
-        el("circle", { cx: cx + 1.5, cy: cy + 1.5, r: 26, fill: "rgba(0,0,0,0.22)" }, svg);
-        // Outer disk
+        const PS = isRed ? S.red : S.black;
+        // Drop shadow — "strong" uses the soft radial-gradient ellipse;
+        // bool true keeps the legacy hard 1.5px offset shadow.
+        if (S.piece.shadow === "strong") {
+          el("ellipse", { cx, cy: cy + 3, rx: 27, ry: 9, fill: "url(#pshadow)" }, svg);
+        } else if (S.piece.shadow) {
+          el("circle", { cx: cx + 1.5, cy: cy + 1.5, r: 26, fill: "rgba(0,0,0,0.22)" }, svg);
+        }
+        // Outer disk — gradient fill when style enables it
         el("circle", {
           cx, cy, r: 26,
-          fill: isRed ? "#fff5db" : "#222",
-          stroke: isRed ? "#8b1a0e" : "#000",
+          fill: (S.piece.gradient && PS.grad) ? `url(#pg-${isRed ? "red" : "black"})` : PS.fill,
+          stroke: PS.border,
           "stroke-width": 1.5,
         }, svg);
-        // Inner ring
-        el("circle", {
-          cx, cy, r: 22,
-          fill: "none",
-          stroke: isRed ? "#c0392b" : "#888",
-          "stroke-width": 1,
-        }, svg);
-        // Character
+        // Bevel highlight — thin light arc on the upper-left, sells the 3D feel
+        if (S.piece.bevel) {
+          el("path", {
+            d: `M ${cx - 18} ${cy - 16} A 24 24 0 0 1 ${cx + 16} ${cy - 18}`,
+            fill: "none",
+            stroke: "rgba(255,255,255,0.35)",
+            "stroke-width": 1.2,
+          }, svg);
+        }
+        // Optional inner ring (traditional style only)
+        if (S.piece.innerRing && PS.innerRing) {
+          el("circle", {
+            cx, cy, r: 22, fill: "none",
+            stroke: PS.innerRing, "stroke-width": 1,
+          }, svg);
+        }
+        // Character — piece glyph in the style's chosen font family.
+        const PF = PIECE_FONTS[S.font] || PIECE_FONTS.classic;
         const t = el("text", {
-          x: cx, y: cy + 10, "text-anchor": "middle",
-          "font-size": 28, "font-family": "serif", "font-weight": "bold",
-          fill: isRed ? "#c0392b" : "#f5f5f5",
+          x: cx, y: cy + PF.dy, "text-anchor": "middle",
+          "font-size": 28, "font-family": PF.family, "font-weight": PF.weight,
+          fill: PS.text,
         }, svg);
         t.textContent = PIECE_CHAR[p] || p;
       }
     }
   }
+}
+
+// Re-draw the board at the current STATE using whatever board style is now
+// active. Called when the board-style picker changes.
+function redrawCurrentBoard() {
+  if (!STATE.GAME || !SVG_BOARD) return;
+  if (STATE.pi >= 0) {
+    const ply = STATE.GAME.variations[STATE.vi][STATE.pi];
+    const entry = getEntry(ply.fen);
+    drawBoard(SVG_BOARD, ply.fen_after || ply.fen, ply.iccs, entry ? entry.best_iccs : null);
+  } else {
+    drawBoard(SVG_BOARD, STATE.GAME.init_fen, null, null);
+  }
+}
+
+// Injects a "棋盤" picker next to the existing theme picker in the game header.
+// Done in JS (not in the rendered HTML) so adding/changing styles only requires
+// editing this file — no need to re-render the 41 game pages.
+function injectBoardPicker() {
+  const themePicker = document.querySelector("header.game-header .theme-picker");
+  if (!themePicker || document.getElementById("boardPicker")) return;
+
+  const label = document.createElement("label");
+  label.className = "theme-picker board-picker";
+  const opts = Object.entries(BOARD_STYLES)
+    .map(([k, v]) => `<option value="${k}">${v.label}</option>`)
+    .join("");
+  label.innerHTML = `棋盤<select id="boardPicker">${opts}</select>`;
+  themePicker.parentNode.insertBefore(label, themePicker);
+
+  const sel = label.querySelector("select");
+  const stored = localStorage.getItem("chessbookBoard") || "traditional";
+  const initial = BOARD_STYLES[stored] ? stored : "traditional";
+  document.documentElement.dataset.board = initial;
+  sel.value = initial;
+  // Load the font for the currently chosen style up front, so the very first
+  // drawBoard render in selectVariation gets the correct glyphs.
+  ensurePieceFontLoaded(BOARD_STYLES[initial].font);
+  sel.addEventListener("change", () => {
+    const v = sel.value;
+    document.documentElement.dataset.board = v;
+    localStorage.setItem("chessbookBoard", v);
+    ensurePieceFontLoaded(BOARD_STYLES[v].font);
+    redrawCurrentBoard();
+    // The Google Font may resolve asynchronously — re-draw shortly after to
+    // pick up the swap once it loads.
+    if (BOARD_STYLES[v].font !== "classic") {
+      setTimeout(redrawCurrentBoard, 600);
+    }
+  });
 }
 
 // ---------- score chart ----------
@@ -388,7 +720,15 @@ function drawChart(svg, plies, activePly) {
 // ---------- state ----------
 
 const STATE = { vi: 0, pi: -1, GAME: null, demoTimer: null, demoMode: null };
-let SVG_BOARD, SVG_CHART, STEP_INFO, ANNOTE_BOX, NAV_STATUS, DEMO_BTN_S, DEMO_BTN_D, REDP_BOX, SELECT;
+let SVG_BOARD, SVG_CHART, STEP_INFO, ANNOTE_BOX, ALTS_BOX, NAV_STATUS, DEMO_BTN_S, DEMO_BTN_D, REDP_BOX, SELECT;
+
+// Move-tree lookups, built once at initGamePage time from GAME.tree + GAME.variations.
+// ALTS_BY_FEN: position-before-move -> list of alternative moves played from that
+// position across all variations (deduped via tree merge in build_data.py).
+// MOVE_LOOKUP: "fen|iccs" -> [variation_idx, ply_idx] for "click an alternative
+// to jump to the variation that played it" navigation.
+const ALTS_BY_FEN = {};
+const MOVE_LOOKUP = {};
 
 function isRedPerspective() { return REDP_BOX.checked; }
 
@@ -596,6 +936,98 @@ function renderAnnote(ply) {
   ANNOTE_BOX.appendChild(body);
 }
 
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+function buildTreeLookups(GAME) {
+  if (GAME.tree) {
+    ALTS_BY_FEN[GAME.init_fen] = GAME.tree.children || [];
+    const walk = (node) => {
+      for (const c of node.children || []) {
+        if (c.fen_after) ALTS_BY_FEN[c.fen_after] = c.children || [];
+        walk(c);
+      }
+    };
+    walk(GAME.tree);
+  }
+  for (let vi = 0; vi < GAME.variations.length; vi++) {
+    const plies = GAME.variations[vi];
+    for (let pi = 0; pi < plies.length; pi++) {
+      const p = plies[pi];
+      if (!p.fen || !p.iccs) continue;
+      const key = p.fen + '|' + p.iccs;
+      if (!(key in MOVE_LOOKUP)) MOVE_LOOKUP[key] = [vi, pi];
+    }
+  }
+}
+
+// Render the "本步可選" panel for the position the user is currently inspecting.
+// `currentFen` is the position BEFORE the move (or init_fen if no ply active).
+// `currentIccs` is the move actually played at this row (or null) — used to
+// highlight which alternative is the book's choice in this variation.
+function renderAlts(currentFen, currentIccs) {
+  if (!ALTS_BOX) return;
+  const body = ALTS_BOX.querySelector('.alts-body');
+  body.innerHTML = '';
+  const alts = ALTS_BY_FEN[currentFen] || [];
+  // A list with only the currently-played move isn't useful — that's just the
+  // table cell repeated. Treat as "no alternatives" so the box stays present
+  // (stable layout) but doesn't pretend to offer a choice.
+  const realAlts = alts.length > 1
+    || (alts.length === 1 && alts[0].iccs !== currentIccs);
+  if (!realAlts) {
+    const ph = document.createElement('div');
+    ph.className = 'alts-placeholder';
+    ph.textContent = alts.length === 0
+      ? '（此局面已是末端）'
+      : '（此局面僅一種走法）';
+    body.appendChild(ph);
+    return;
+  }
+  for (const a of alts) {
+    const div = document.createElement('div');
+    div.className = 'alts-item' + (a.iccs === currentIccs ? ' current' : '');
+    const sideCls = a.side === 'red' ? 'red' : 'black';
+    const sideLabel = a.side === 'red' ? '紅' : '黑';
+    const ann = a.annote
+      ? ` <span class="annote-marker" title="${escapeHtml(a.annote)}">*</span>`
+      : '';
+    // Engine score AFTER playing this alternative — the mover at fen_after is
+    // the OPPOSITE side. Use fmtScore (always red-POV) for consistency with
+    // the table's 分(cp) column.
+    let scoreHtml = '';
+    if (a.fen_after) {
+      const entry = getEntry(a.fen_after);
+      if (entry) {
+        const newMover = a.side === 'red' ? 'black' : 'red';
+        const sc = fmtScore(entry, newMover);
+        scoreHtml = `<span class="alts-score ${sc.cls}">${sc.text}</span>`;
+      }
+    }
+    div.innerHTML = `
+      <span class="alts-side ${sideCls}">${sideLabel}</span>
+      <span class="alts-cn">${escapeHtml(a.chinese || a.iccs)}${ann}</span>
+      <code class="alts-iccs">${a.iccs}</code>
+      ${scoreHtml}
+    `;
+    div.addEventListener('click', () => navigateToAlternative(currentFen, a.iccs));
+    body.appendChild(div);
+  }
+}
+
+function navigateToAlternative(fen, iccs) {
+  const key = fen + '|' + iccs;
+  const found = MOVE_LOOKUP[key];
+  if (!found) return;
+  const [vi, pi] = found;
+  if (vi !== STATE.vi) selectVariation(vi);
+  activatePly(pi);
+}
+
 function scrollRowIntoView(tr) {
   const wrap = tr.closest(".plies-wrap");
   if (!wrap) return;
@@ -624,6 +1056,7 @@ function selectVariation(vi) {
   updateNavStatus();
   updateStepInfo(null, null);
   renderAnnote(null);
+  renderAlts(STATE.GAME.init_fen, null);
   document.querySelectorAll("table.plies tr.active").forEach((r) => r.classList.remove("active"));
 }
 
@@ -648,6 +1081,7 @@ function activatePly(pi) {
   drawChart(SVG_CHART, plies, pi);
   updateStepInfo(ply, entry);
   renderAnnote(ply);
+  renderAlts(ply.fen, ply.iccs);
   updateNavStatus();
   updateDemoButtons();
 }
@@ -710,6 +1144,15 @@ function initGamePage(GAME) {
   DEMO_BTN_S = document.getElementById("demoBtnShallow");
   DEMO_BTN_D = document.getElementById("demoBtnDeep");
   REDP_BOX = document.getElementById("redPerspective");
+  ALTS_BOX = document.getElementById("altsBox");
+
+  buildTreeLookups(GAME);
+  // Inject the board-style picker (and apply persisted board style) BEFORE
+  // selectVariation triggers the first drawBoard call — that way the initial
+  // render already uses the saved style instead of flashing the default.
+  injectBoardPicker();
+  // Initial alts panel: show first-move alternatives at the init position.
+  renderAlts(GAME.init_fen, null);
   SELECT = document.getElementById("variation-select");
 
   // Annotate every table once (the hidden ones too, so future variation switches don't need redoing).

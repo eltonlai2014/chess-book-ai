@@ -153,11 +153,40 @@ INDEX_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <title>象棋書譜 AI 對照</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=IBM+Plex+Sans+TC:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+TC:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="style.css">
+<script>
+  // Apply theme before stylesheet kicks in to prevent flash-of-wrong-theme.
+  (function() {{
+    var t = localStorage.getItem('chessbookTheme') || 'amber';
+    document.documentElement.dataset.theme = t;
+  }})();
+</script>
 </head>
 <body>
 <header><h1>象棋書譜 × Pikafish 對照</h1>
-<p class="meta">共 {n_games} 個棋譜檔，{n_positions} 個唯一局面已分析</p></header>
+<p class="meta">共 {n_games} 個棋譜檔 · {n_positions} 個唯一局面已分析</p>
+<label class="theme-picker">主題
+<select id="themePicker" onchange="setTheme(this.value)">
+<option value="amber">琥珀 Amber</option>
+<option value="emerald">翡翠 Emerald</option>
+<option value="ink">墨拓 Ink</option>
+</select>
+</label>
+</header>
+<script>
+  function setTheme(name) {{
+    document.documentElement.dataset.theme = name;
+    localStorage.setItem('chessbookTheme', name);
+  }}
+  document.addEventListener('DOMContentLoaded', function() {{
+    var t = localStorage.getItem('chessbookTheme') || 'amber';
+    var p = document.getElementById('themePicker');
+    if (p) p.value = t;
+  }});
+</script>
 <main class="categories">
 {items}
 </main>
@@ -170,14 +199,41 @@ GAME_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <title>{title}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=IBM+Plex+Sans+TC:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+TC:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="../style.css">
+<script>
+  (function() {{
+    var t = localStorage.getItem('chessbookTheme') || 'amber';
+    document.documentElement.dataset.theme = t;
+  }})();
+</script>
 </head>
 <body>
 <header class="game-header">
 <a class="back" href="../index.html">← 回到列表</a>
 <h1>{title}</h1>
 <span class="meta">變例 {n_var} 條 · 結果 {result}</span>
+<label class="theme-picker">主題
+<select id="themePicker" onchange="setTheme(this.value)">
+<option value="amber">琥珀 Amber</option>
+<option value="emerald">翡翠 Emerald</option>
+<option value="ink">墨拓 Ink</option>
+</select>
+</label>
 </header>
+<script>
+  function setTheme(name) {{
+    document.documentElement.dataset.theme = name;
+    localStorage.setItem('chessbookTheme', name);
+  }}
+  document.addEventListener('DOMContentLoaded', function() {{
+    var t = localStorage.getItem('chessbookTheme') || 'amber';
+    var p = document.getElementById('themePicker');
+    if (p) p.value = t;
+  }});
+</script>
 <main class="game">
 <aside class="board-panel">
 <svg id="board" viewBox="0 0 540 600" xmlns="http://www.w3.org/2000/svg"></svg>
@@ -202,7 +258,13 @@ GAME_HTML = """<!DOCTYPE html>
 <div class="plies-host">
 {variation_tables}
 </div>
+<div class="right-col">
 <div class="annote-box" id="annoteBox"></div>
+<div class="alts-box" id="altsBox">
+<div class="alts-head">💡 本步可選</div>
+<div class="alts-body"></div>
+</div>
+</div>
 </div>
 </section>
 </main>

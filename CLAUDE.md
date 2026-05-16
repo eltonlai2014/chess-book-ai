@@ -26,6 +26,10 @@ py site_builder\build_data.py -d 12              # XQF → games.json + position
 py site_builder\enrich_decisive.py --depth 22 --threads 4 --threshold 300
                                                   # deep-eval positions in "decisive" variations (skips first 15 plies)
 py site_builder\render_site.py                   # writes output/site/, then mirrors → docs/ for GitHub Pages
+py site_builder\sync_assets.py                   # fast: copy ONLY style.css + board.js to output/site + docs (<1s).
+                                                  # use this for CSS/JS iteration — the enrich step in render_site.py
+                                                  # iterates 27k+ FENs through cchess and takes many minutes when
+                                                  # redo_deep is running concurrently. HTML doesn't need re-render.
 
 # --- analysis utilities ---
 py site_builder\find_trap_plies.py               # list "human traps": shallow OK + deep blunder + past opening

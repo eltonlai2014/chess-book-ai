@@ -1,263 +1,107 @@
 # chess-book-ai
 
-把 `D:\Elton\TestArea\chess-book\` 底下的 **XQF 象棋棋譜**餵給 **Pikafish** 引擎，
-對書譜的每一步做獨立分析，輸出 Markdown 報告。
+把 `D:\Elton\TestArea\chess-book\` 的 41 個 **XQF 象棋棋譜**餵給 **Pikafish** 引擎做深淺兩段評分，
+產出一個可瀏覽、可演示主變、可查雲庫的**靜態棋譜對照網站**，重點放在找出
+書本作者「淺算覺得沒事但深算發現是大失誤」的「人類陷阱」位置。
+
+**線上 demo**：<https://eltonlai2014.github.io/chess-book-ai/>
+（每次本機跑完 `render_site.py` 會自動 mirror 到 `/docs/` 再 push 上 GitHub Pages）
 
 ---
 
-## 1. 目的
+## 兩條程式路徑
 
-XQF 是「象棋演播室」用的二進位棋譜格式，肉眼不能讀、外部 AI 工具也不認。
-本專案的工作流程：
-
-1. **解析** XQF → 取出元資料、初始局面、所有變例的着法序列（ICCS）
-2. **送進 Pikafish** → 對每一個書譜「走子前」的局面，獨立算出引擎首選與分數
-3. **產生對照報告** → 每一步把「書譜走法」與「引擎首選」並排，方便比對
-
----
-
-## 2. 環境
-
-| 元件 | 來源 | 位置 |
+| 路徑 | 入口 | 用途 |
 |---|---|---|
-| Python | 已安裝 3.10.10 | `C:\Users\EltonYM_Lai\AppData\Local\Programs\Python\Python310\` |
-| cchess (Python 套件) | `pip install cchess` (v1.25.5) | site-packages |
-| Pikafish 引擎 | 官方 release 2026-01-02 | `engine\Windows\pikafish-avx2.exe` |
-| NNUE 神經網路檔 | 與引擎同梱 | `engine\Windows\pikafish.nnue` |
+| 一次性 Markdown 分析 | [analyze.py](analyze.py) | 單一 XQF → 單一 Markdown 報告（最早期的工具，仍可用） |
+| 靜態網站 pipeline | [site_builder/](site_builder/) | 批次掃描所有 XQF → 引擎深淺評分 → 渲染 HTML → 鏡像到 `/docs/` |
 
-CPU 是 i7-8700（Coffee Lake，AVX2、無 AVX-512），故選 `avx2` build。
-換機器時若 CPU 支援 BMI2 / VNNI / AVX-512，可改用對應的 exe（同目錄都有）。
+絕大多數新功能都在 site_builder 這條。
 
 ---
 
-## 3. 目錄結構
+## 快速上手
 
-```
-chess-book-ai\
-├── README.md              <- 本檔
-├── analyze.py             <- 主分析腳本（單檔）
-├── smoke_engine.py        <- 引擎連線冒煙測試
-├── smoke_xqf.py           <- XQF 解析冒煙測試
-├── engine\
-│   ├── pikafish.nnue      <- (原始位置；已複製到 Windows\)
-│   └── Windows\
-│       ├── pikafish-avx2.exe   <- 預設使用這顆
-│       ├── pikafish-bmi2.exe
-│       ├── pikafish-avx512.exe ... (其他 build)
-│       └── pikafish.nnue       <- 引擎啟動會在 exe 同層找這個檔
-└── output\
-    └── 中砲對單提馬.md     <- 範例輸出
-```
+需要 Python 3.10、Pikafish exe + NNUE（放在 `engine\Windows\` 下，git-ignored）。
 
----
-
-## 4. 怎麼跑
-
-### 分析單一檔案
+中文輸出若亂碼：`$env:PYTHONIOENCODING="utf-8"`
 
 ```powershell
-# 基本用法（depth 預設 14，輸出到 stdout）
-py D:\Elton\TestArea\chess-book-ai\analyze.py "D:\Elton\TestArea\chess-book\中砲對單提馬.XQF"
+# --- 一次性 Markdown 報告 ---
+py analyze.py "D:\Elton\TestArea\chess-book\中砲對單提馬.XQF" -d 14 `
+    -o "output\中砲對單提馬.md"
 
-# 指定深度、寫入檔案
-py D:\Elton\TestArea\chess-book-ai\analyze.py `
-   "D:\Elton\TestArea\chess-book\中砲對單提馬.XQF" `
-   -d 18 `
-   -o "D:\Elton\TestArea\chess-book-ai\output\中砲對單提馬.md"
+# --- 靜態網站 pipeline（典型順序）---
+py site_builder\build_data.py -d 12
+#   ↑ XQF → games.json (含 tree 結構) + positions.js (淺算 depth 12)
+
+py site_builder\redo_deep.py --depth 22 --threads 4 --hash-mb 512
+#   ↑ 深算 depth 22（用乾淨的 clean_eval driver，~14h）
+
+py site_builder\chessdb_query.py --game "."
+#   ↑ 從 chessdb.cn 抓 plies 10-25 的雲庫評分（~45 分鐘）
+
+py site_builder\render_site.py
+#   ↑ 渲染 output/site/，並 mirror 到 docs/
+
+# --- 分析輔助 ---
+py site_builder\list_trap_plies.py --threshold 200 --shallow-blind-only
+#   ↑ 產出 trap_plies_blind.csv / .md（每變例 top-3）
+
+py site_builder\depth_probe.py --game 牛頭滾 --variation 10 --ply 31 `
+    --depths 12,16,20,24
+#   ↑ 比對單一位置不同深度的收斂
+
+# --- 冒煙測試（就是 test suite）---
+py smoke_engine.py
+py smoke_xqf.py
 ```
 
-### 批次分析 41 個檔（尚未寫，留待延伸）
+---
 
-目前只有單檔腳本；批次包裝待後續加（見「延伸方向」）。
+## 網站功能一覽
+
+- **多變例瀏覽**：左邊變例選單，右邊每步引擎首選 + 分數 + Δ（淺）+ 深Δ + 雲庫 + 是否相同
+- **棋盤跟動**：點任一步 → 棋盤跳到該局面（紅黑視角可切換）
+- **演示推演**：兩顆按鈕「淺12」「深22」分別播放對應深度引擎的主變
+- **本步可選**：右下面板列出同位置在其他變例的走法（樹狀結構去重），點即跳
+- **人類陷阱標記**：橘色底色 + ⚠ 三角形 = 淺算說沒事但深算說大失誤
+- **三主題**：右上選單切換「琥珀」「翡翠」「墨拓」（design tokens 一處覆寫）
+- **雲庫對照**：書譜 vs chessdb.cn 全球資料庫的最佳走法 + 勝率（hover 看詳情）
 
 ---
 
-## 5. 輸出格式說明
+## 架構重點
 
-範例：[output\中砲對單提馬.md](output\中砲對單提馬.md)
+完整細節見 [CLAUDE.md](CLAUDE.md)。核心觀念：
 
-### 檔頭區
-
-```
-# 中砲對單提馬.XQF
-- 起始局面: rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w
-- 變例數: 6 / branches: 6
-- 引擎: Pikafish 2026-01-02, depth=14
-```
-
-- **起始局面**：FEN 字串。`w` = 紅方先走。
-- **變例數**：書譜中總共幾條着法線。每條獨立列出（彼此可能前綴重疊）。
-
-### 對局表格欄位
-
-| 欄位 | 意義 |
-|---|---|
-| `#` | 本變例中的第幾步（ply，半步） |
-| `方` | 該手由「紅」或「黑」走 |
-| `書譜(中文)` | 書譜記載的這一步，傳統中文記譜（例：`炮二平五`） |
-| `書譜(ICCS)` | 同一步的 ICCS 座標表示（例：`h2e2`） |
-| `引擎首選` | Pikafish 在這個局面想走的最佳步（中文 + ICCS） |
-| `引擎分(cp)` | 引擎對「自己這一步走完後」局面的評估，**單位 centipawn (cp)** |
-| `同?` | ✓ = 書譜與引擎首選相同；✗ = 不同 |
-| `主要變化` | 引擎預估的後續走法（PV，前 6 步），ICCS 表示 |
-
-### 分數（cp）怎麼讀
-
-- **單位**：1 兵 ≈ 100 cp（centipawn = 「百分之一兵」）
-- **視角**：當前**輪到走子的一方**的視角
-  - 紅方走子那行：`+50` = 紅方優勢約半個兵
-  - 黑方走子那行：`+50` = 黑方優勢約半個兵
-  - 黑方走子那行：`-22` = 黑方劣勢 22cp（=紅方優勢 22cp）
-- 換言之：**正數永遠代表「該行的那一方」佔優**
-- 若有殺著會顯示 `M3` / `-M5`（M = mate，正負代表是己方殺 or 被殺，數字是步數）
-
-> ⚠️ 視角會隨方變，初看會以為「+ 一直變 - 」很奇怪。
-> 如尊敬的主人偏好「永遠以紅方視角」，可在 `analyze.py` 的 `fmt_score()` 裡，
-> 偵測該行是黑方走子時把分數取負號（待擴充）。
-
-### ICCS 座標
-
-- 直棋格 9 列 × 10 行；列以英文字母 `a..i`（左到右，紅方視角），行以數字 `0..9`（紅方底線 0、黑方底線 9）
-- 一手寫成 4 字元：`(起點列)(起點行)(終點列)(終點行)`
-- 例：`h2e2` = 紅方 h 列第 2 行的子，平移到 e 列第 2 行 → 對應中文「炮二平五」
+- `positions.js`（淺）和 `positions_deep.js`（深）以 **FEN 為 key**，重複位置只算一次
+- `games.json` 同時保留 **flat variations** 跟 **tree 結構**（dedup 後 ~3x 壓縮）
+- 引擎驅動：**只用 `cchess.UciEngine` 跑單發呼叫**；批次工作必須用 `site_builder/clean_eval.py` 的乾淨 driver（cchess 的 thread race 在 depth 22 會污染 85% 結果，已驗證）
+- 跳過開局：trap 分析從 ply 16 起算（前 15 步是公認的開局理論，比較沒意義）
+- 部署：渲染完 mirror `output/site/` → `docs/`，GitHub Pages 從 `/docs/` 出菜
 
 ---
 
-## 6. 設計重點
+## 為什麼存在這個工具
 
-### XQF 解析直接用 `cchess.read_from_xqf`
-
-- `read_from_xqf(path)` 回傳 `Game` 物件
-- `game.info` — dict，含 `branchs` / `result` / `version` / `move_player` 等
-- `game.init_board` — `ChessBoard` 物件（呼叫 `.to_fen()` 取 FEN 字串；不是字串本身）
-- `game.dump_iccs_moves()` — list of list，每條變例一個 list，元素為 ICCS 字串
-
-### Pikafish 講 UCI、不是 UCCI（重要！）
-
-雖然中國象棋圈常用 UCCI 協議，**Pikafish 用的是 UCI 變體**。
-cchess 提供兩個類別：
-
-- ✅ `cchess.UciEngine` — Pikafish 用這個
-- ❌ `cchess.UcciEngine` — 不適用，會永遠 `wait_for_ready` 失敗
-
-### 局面去重
-
-書譜常見多條變例前綴重疊（例：6 條都從 `炮二平五 馬②進３ 馬二進三 …` 開始）。
-腳本會收集所有「走子前 FEN」做 dict 去重，引擎只跑唯一局面，再回填到各變例的表格。
-
-- 範例檔（中砲對單提馬）：總步數 82，唯一局面僅 38，**~2.2× 加速**
-- 大檔加速比可能更高
-
-### NNUE 路徑
-
-Pikafish 啟動時會在 **exe 同目錄**找 `pikafish.nnue`。
-解壓後 `.nnue` 預設在 `engine\` 根目錄，已複製一份到 `engine\Windows\`。
-若移動 exe，要連 `.nnue` 一起搬。
+- 演播室介面 ~20 年沒大改，且看不到深算結果
+- 自己手裡 41 個棋譜，想知道書本作者的某些「看似不錯」的著法是不是陷阱
+- 引擎側已是商品化問題（Pikafish + NNUE 開源、cchess 開源），剩下的只是「把資料攤平攤好」
 
 ---
 
-## 7. 已驗證
+## 引用與來源
 
-- [x] cchess 解析 XQF（中砲對單提馬.XQF，6 條變例，82 步）
-- [x] Pikafish UCI 握手 + depth=14 分析
-- [x] 中文記譜轉換（`Move.to_text()`）
-- [x] 對照報告 Markdown 輸出
-- [x] 局面去重節省引擎時間
-
-效能基準：i7-8700, depth 14 → ~7 局面/秒；單檔 ~10 秒。
+- [cchess](https://github.com/walker8088/cchess) — XQF 解析、棋盤規則、UCI 驅動
+- [Pikafish](https://github.com/official-pikafish/Pikafish) — 引擎（neural net 強度 ~3200 Elo）
+- [chessdb.cn](https://www.chessdb.cn/) — 全球象棋雲庫
+- Tailwind CSS 色票（用 CSS 變數實作，沒裝框架）
 
 ---
 
-## 8. 延伸方向（給未來的尊敬的主人 / Claude）
+## 已知 / 未做
 
-排序大致依「最有用 → 最豪華」：
-
-### 8.1 批次跑全部 41 個檔
-- 簡單包一層 `batch.py` 走訪 `chess-book\**\*.XQF`
-- 加入跨檔的全域 FEN cache（共用的開局走法只算一次，省更多時間）
-- 失敗檔記在 log，不阻斷整批
-- 輸出總索引 `output\INDEX.md`
-
-### 8.2 分數視角正規化
-- `analyze.py:fmt_score()` 加一個「永遠以紅方視角」模式
-- 黑方走子時把 score 取負
-
-### 8.3 標記「書譜偏差大」的步
-- 一個位置兩件事：
-  - 書譜走法的分數（要把書譜走法 push 進引擎用 `searchmoves` 限定）
-  - 引擎首選的分數
-- 兩者差值 > 50cp 就標紅，> 200cp 標「⚠️ 可疑」
-- 目前腳本只跑「引擎首選」一次，沒跑「書譜限定」的對照
-
-### 8.4 餵到網站 / API
-- xiangqiai.com 走的也是 Pikafish，自己本地跑已等價，但若要上傳：
-  - 多半是把 FEN 貼到 UI，目前沒看到公開 API
-  - 若以後找到 API endpoint，可寫一個 send_to_xiangqiai.py
-
-### 8.5 變例樹合併
-- 目前 `dump_iccs_moves()` 把樹「拍扁」成多條線，前綴重複
-- 改用 `game.iter_moves()` 之類走樹狀結構，輸出更緊湊的報告
-
-### 8.6 加入勝率視角
-- cp 對非引擎玩家不直觀
-- 可用常見的 `winrate = 50 + 50 * (2 / (1 + exp(-0.004 * cp)) - 1)` 轉換成「估計勝率 %」
-
-### 8.7 圖形化盤面
-- 用 cchess 或 matplotlib 把關鍵局面畫成圖嵌入 Markdown
-- 便於離線複習
-
-### 8.8 PGN 匯出
-- 順手把 XQF 轉成通用 PGN，方便丟到其他棋藝軟體
-- cchess 有 `read_from_pgn` / `save_to`（pgn）
-
-### 8.9 升級成完整象棋軟體（最大躍進）
-
-目前的「引擎側」其實已完備：cchess（規則、記譜、棋譜 I/O）+ Pikafish（AI）+ XQF 解析。
-剩下要做的只是「殼」——UI、操作流程、資料庫。可分三階段：
-
-#### 階段 A：MVP「棋譜瀏覽器 + AI 即時評分」（建議起點）
-**目標**：把現有 41 個 XQF 變成可瀏覽、可即時看引擎評分的 Web App。
-
-- 後端：FastAPI（Python）直接重用 `cchess` + Pikafish 子程序
-- 前端：Vue 3 / React + Canvas / SVG 畫盤面（200 行內畫得出來）
-- 載入 `chess-book\` 整個資料夾 → 樹狀列表 → 點開看變例樹 → 每步側欄顯示 Pikafish 評分與 PV
-- 工作量：原型約一兩百行後端 + 五百行前端
-- **建議放在獨立目錄** `chess-book-ai-app\`，與本目錄（CLI 分析工具）分開
-
-> 為何不用 Tkinter/PyQt：盤面圖形需求高、美感差；Web 棧好擴充、跨平台。
-> 想要桌面打包再用 Tauri 包一層。
-
-#### 階段 B：對弈 + 復盤
-- 人機對弈（時間控制可省）
-- 對弈結束自動深度分析 → 標記疑問步 / 失誤 / 妙手
-- 類似 chess.com「Game Review」的中國象棋版
-
-#### 階段 C：豪華擴充
-- 雲端棋庫（多人協作、標籤系統）
-- 行動版（PWA 或 React Native）
-- 多人對弈、引擎強度調整、開局訓練模式
-
-#### 為什麼這條路值得走
-- 市場現況：象棋演播室介面老舊（~20 年沒大改）、Windows-only、無雲端
-- 引擎側成本幾乎是零（Pikafish 開源 + cchess 開源）
-- 直接吃掉尊敬的主人現有的 41 個棋譜檔，自用即有價值
-
----
-
-## 9. 故障排除
-
-| 症狀 | 可能原因 | 解法 |
-|---|---|---|
-| `wait_for_ready=False` | 用了 UcciEngine | 改 `UciEngine` |
-| `Unknown command: '﻿uci'` | PowerShell 管線加了 BOM | 用 Python 驅動而不是 `"cmd`n" \| & engine.exe` |
-| `'str' object has no attribute 'isinstance'` | 把 `game.init_board`（ChessBoard 物件）當 FEN 字串用 | 呼叫 `.to_fen()` |
-| 分析超慢 | 用了非最佳 build / NNUE 沒載到 | 確認 `pikafish.nnue` 在 exe 同目錄；CPU 對得上 build |
-| 中文顯示亂碼 | PowerShell 編碼 | `$env:PYTHONIOENCODING="utf-8"` |
-
----
-
-## 10. 來源 / 參考
-
-- cchess 套件：https://github.com/walker8088/cchess
-- Pikafish：https://github.com/official-pikafish/Pikafish
-- XQF 格式（cchess 內建解碼，已驗證 v1.8 / version=18 可讀）
+- `positions_view.js` 已經 32 MB，全長 PV 解封後會到 ~60 MB（GitHub Pages 可吃，但首次載入慢）
+- shallow（depth 12）尚未用 clean_eval 重跑驗證；audit 只看「最佳走法是否合法」(100% 通過)，分數沒比對
+- 沒有 dark mode（`ink` 主題接近但不完全）；要新增主題只動 `:root[data-theme="xxx"]` 一塊 CSS

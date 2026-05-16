@@ -136,6 +136,45 @@ DATA_DIR = OUT_DIR / "data"
 POSITIONS_JS = OUT_DIR / "positions.js"
 
 
+def build_move_tree(variations):
+    """Fold a flat list of variations into a move-tree.
+
+    Each non-root node = one move played from its parent's position. Children
+    of a node are the alternative continuations seen in any variation.
+    Shared prefixes (e.g. an opening sequence common to 200 variations) collapse
+    into a single path. Result has no "fen" on internal nodes — fen_after is
+    enough for the client to look up engine eval.
+
+    Returned shape:
+      { "children": [
+          { "iccs": "h2e2", "chinese": "炮二平五", "side": "red",
+            "fen_after": "...", "annote": null,
+            "children": [ ...same shape... ] }
+        ] }
+    """
+    root = {'children': []}
+    for plies in variations:
+        node = root
+        for p in plies:
+            # Skip invalid markers (no fen) — they break the chain.
+            if not p.get('fen'):
+                break
+            iccs = p.get('iccs')
+            existing = next((c for c in node['children'] if c['iccs'] == iccs), None)
+            if existing is None:
+                existing = {
+                    'iccs': iccs,
+                    'chinese': p.get('chinese'),
+                    'side': p.get('side'),
+                    'fen_after': p.get('fen_after'),
+                    'annote': p.get('annote'),
+                    'children': [],
+                }
+                node['children'].append(existing)
+            node = existing
+    return root
+
+
 def scan_games(src_dir: Path):
     """Parse every XQF file into a serialisable game dict. No engine work yet.
 
@@ -198,6 +237,7 @@ def scan_games(src_dir: Path):
             'result': info.get('result', '*'),
             'branches': info.get('branchs', len(variations)),
             'variations': variations,
+            'tree': build_move_tree(variations),
         })
     return games, fens_needed
 

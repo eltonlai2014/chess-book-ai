@@ -3,11 +3,40 @@
 <head>
 <meta charset="UTF-8">
 <title>象棋書譜 AI 對照</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=IBM+Plex+Sans+TC:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+TC:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="style.css">
+<script>
+  // Apply theme before stylesheet kicks in to prevent flash-of-wrong-theme.
+  (function() {
+    var t = localStorage.getItem('chessbookTheme') || 'amber';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
 </head>
 <body>
 <header><h1>象棋書譜 × Pikafish 對照</h1>
-<p class="meta">共 41 個棋譜檔，27581 個唯一局面已分析</p></header>
+<p class="meta">共 41 個棋譜檔 · 27581 個唯一局面已分析</p>
+<label class="theme-picker">主題
+<select id="themePicker" onchange="setTheme(this.value)">
+<option value="amber">琥珀 Amber</option>
+<option value="emerald">翡翠 Emerald</option>
+<option value="ink">墨拓 Ink</option>
+</select>
+</label>
+</header>
+<script>
+  function setTheme(name) {
+    document.documentElement.dataset.theme = name;
+    localStorage.setItem('chessbookTheme', name);
+  }
+  document.addEventListener('DOMContentLoaded', function() {
+    var t = localStorage.getItem('chessbookTheme') || 'amber';
+    var p = document.getElementById('themePicker');
+    if (p) p.value = t;
+  });
+</script>
 <main class="categories">
 <section class="category"><h2>主目錄 <span class="dim">(20)</span></h2><ul class="game-list"><li><a href="games/game-2bb162f009.html">中炮三兵兩頭蛇對左三步虎黑棄3卒變</a> <span class="dim">· 21 變例 · 702 步</span></li><li><a href="games/game-890ac66f4b.html">中砲三兵五八砲對左三步虎</a> <span class="dim">· 13 變例 · 521 步</span></li><li><a href="games/game-6d8bd62896.html">中砲三兵對屏風馬包8進4</a> <span class="dim">· 23 變例 · 819 步</span></li><li><a href="games/game-6ccebef13e.html">中砲對單提馬</a> <span class="dim">· 6 變例 · 82 步</span></li><li><a href="games/game-570e60d418.html">中砲對單提馬_屯邊馬型</a> <span class="dim">· 63 變例 · 1949 步</span></li><li><a href="games/game-5655f2584b.html">中砲對屏風馬左包封車</a> <span class="dim">· 112 變例 · 3523 步</span></li><li><a href="games/game-90a8c0f8cd.html">中砲巡河車對屏風馬搶三卒</a> <span class="dim">· 37 變例 · 1647 步</span></li><li><a href="games/game-07a40d97c4.html">中砲急中兵對平包兌車_卒五進一變</a> <span class="dim">· 21 變例 · 777 步</span></li><li><a href="games/game-be7211d7ab.html">中砲棄三兵對屏風馬右包過河</a> <span class="dim">· 12 變例 · 578 步</span></li><li><a href="games/game-8e3894df6a.html">中砲過河車對屏風馬搶兩頭蛇</a> <span class="dim">· 2 變例 · 32 步</span></li><li><a href="games/game-019ddb3cb0.html">五八砲對屏風馬</a> <span class="dim">· 84 變例 · 2127 步</span></li><li><a href="games/game-7d7542f215.html">卒底包順包</a> <span class="dim">· 39 變例 · 1009 步</span></li><li><a href="games/game-4fb4e3e9a1.html">小列手砲</a> <span class="dim">· 9 變例 · 429 步</span></li><li><a href="games/game-0febf236fd.html">左馬盤河卒7進1騙招</a> <span class="dim">· 42 變例 · 1394 步</span></li><li><a href="games/game-64d5a964d7.html">左馬盤河右橫車</a> <span class="dim">· 27 變例 · 1361 步</span></li><li><a href="games/game-4a68b305ef.html">左馬盤河飛左象</a> <span class="dim">· 48 變例 · 1937 步</span></li><li><a href="games/game-88024146a1.html">平包兌車後手陷阱變例</a> <span class="dim">· 9 變例 · 236 步</span></li><li><a href="games/game-4e934b979c.html">牛頭滾</a> <span class="ai-mark" title="已手動修正註解的版本">✎</span> <span class="dim">· 321 變例 · 12689 步</span></li><li><a href="games/game-5ace8c415a.html">牛頭滾_意大利包</a> <span class="dim">· 43 變例 · 1365 步</span></li><li><a href="games/game-1341f93fdb.html">雙包過河</a> <span class="dim">· 15 變例 · 589 步</span></li></ul></section>
 <section class="category"><h2>半途列包 <span class="dim">(7)</span></h2><ul class="game-list"><li><a href="games/game-2537229807.html">傌3進4先鋒馬</a> <span class="dim">· 4 變例 · 77 步</span></li><li><a href="games/game-f495028dde.html">半途列包_邊傌出左車變例</a> <span class="dim">· 17 變例 · 517 步</span></li><li><a href="games/game-f5d76e834d.html">半途列包_邊傌雙頭蛇</a> <span class="dim">· 66 變例 · 2568 步</span></li><li><a href="games/game-868b56134f.html">半途列包_雙正傌兩頭蛇互相傷害</a> <span class="dim">· 61 變例 · 3257 步</span></li><li><a href="games/game-03c8ada77f.html">半途列包_雙正傌兩頭蛇衝卒棄馬</a> <span class="dim">· 51 變例 · 3139 步</span></li><li><a href="games/game-ecff3f58c6.html">半途列包_雙正傌兩頭蛇避兌車</a> <span class="dim">· 15 變例 · 945 步</span></li><li><a href="games/game-a3ea785466.html">半途列包_雙正傌兩頭蛇黑車二進六</a> <span class="dim">· 33 變例 · 1698 步</span></li></ul></section>
