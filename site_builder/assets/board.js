@@ -1060,6 +1060,32 @@ function escapeHtml(s) {
   }[c]));
 }
 
+// Populate ply.fen_after and tree-node.fen_after by walking from each
+// starting FEN with applyIccs. We don't ship fen_after in games.json
+// anymore — that field used to add ~25 MB. The rest of the UI assumes
+// fen_after exists, so we fill it in once here at page load.
+function hydrateGame(GAME) {
+  const initFen = GAME.init_fen;
+  for (const plies of GAME.variations || []) {
+    for (const p of plies) {
+      if (p && p.fen && p.iccs && p.fen_after == null) {
+        p.fen_after = applyIccs(p.fen, p.iccs);
+      }
+    }
+  }
+  if (GAME.tree) {
+    const walk = (node, parentFen) => {
+      for (const c of node.children || []) {
+        if (c.iccs && parentFen && c.fen_after == null) {
+          c.fen_after = applyIccs(parentFen, c.iccs);
+        }
+        walk(c, c.fen_after || parentFen);
+      }
+    };
+    walk(GAME.tree, initFen);
+  }
+}
+
 function buildTreeLookups(GAME) {
   if (GAME.tree) {
     ALTS_BY_FEN[GAME.init_fen] = GAME.tree.children || [];
@@ -1268,6 +1294,7 @@ function initGamePage(GAME) {
   REDP_BOX = document.getElementById("redPerspective");
   ALTS_BOX = document.getElementById("altsBox");
 
+  hydrateGame(GAME);
   buildTreeLookups(GAME);
   // Inject the board-style picker (and apply persisted board style) BEFORE
   // selectVariation triggers the first drawBoard call — that way the initial

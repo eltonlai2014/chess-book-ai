@@ -162,11 +162,13 @@ def build_move_tree(variations):
             iccs = p.get('iccs')
             existing = next((c for c in node['children'] if c['iccs'] == iccs), None)
             if existing is None:
+                # fen_after omitted — hydrateGame() in board.js derives it via
+                # applyIccs from each parent's FEN at page load. Saves ~25 MB
+                # on games.json.
                 existing = {
                     'iccs': iccs,
                     'chinese': p.get('chinese'),
                     'side': p.get('side'),
-                    'fen_after': p.get('fen_after'),
                     'annote': p.get('annote'),
                     'children': [],
                 }
@@ -213,16 +215,18 @@ def scan_games(src_dir: Path):
                 fens_needed.add(fen)
                 applied = board.move_iccs(iccs)
                 if applied is None:
+                    # fen_after intentionally omitted; hydrateGame() derives
+                    # it client-side. Invalid moves break the chain so the
+                    # hydrator stops at the previous step.
                     plies.append({
-                        'fen': fen, 'fen_after': None,
+                        'fen': fen,
                         'side': side, 'iccs': iccs,
                         'chinese': f'!invalid {iccs}', 'annote': None,
                     })
                     break
                 board.next_turn()
                 plies.append({
-                    'fen': fen,                  # before the move — engine eval keyed by this
-                    'fen_after': board.to_fen(), # after the move — board shows this
+                    'fen': fen,
                     'side': side,
                     'iccs': iccs,
                     'chinese': chinese,
