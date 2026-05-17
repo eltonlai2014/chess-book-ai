@@ -236,16 +236,25 @@ function deltaSignClass(v) {
 // huge fonts like Ma Shan Zheng.
 const PIECE_CHARS_SUBSET = "帥仕相傌俥炮兵將士象馬車砲卒楚河漢界";
 
-// Default = system serif (Songti / PMingLiU / Noto Serif fallback chain via the
-// generic `serif` family). Originally we experimented with Ma Shan Zheng /
-// ZCOOL XiaoWei but master felt they looked off, so all styles now share the
-// classic system serif. The lazy-loader is kept for easy future re-enable.
+// Piece-character font registry. Each entry is lazy-loaded via the `text=`
+// Google Fonts URL trick: only the 16 piece glyphs + 楚河漢界 ship, keeping
+// the font payload <10KB. dy is the vertical text offset that centers the
+// glyph inside a 52-px piece disc.
 const PIECE_FONTS = {
   classic: {
     family: "serif",
     weight: "bold",
     dy: 10,
     googleUrl: null,
+  },
+  // LXGW WenKai TC — free Traditional-Chinese textbook kaishu (楷書). Cleaner
+  // than brush fonts, warmer than Songti, well-balanced strokes at 28px.
+  wenkai: {
+    family: '"LXGW WenKai TC", "Noto Serif TC", "Songti TC", serif',
+    weight: "700",
+    dy: 11,
+    googleUrl: "https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@700&text=" +
+               encodeURIComponent(PIECE_CHARS_SUBSET) + "&display=swap",
   },
 };
 
@@ -263,18 +272,20 @@ function ensurePieceFontLoaded(key) {
 const BOARD_STYLES = {
   traditional: {
     label: "傳統手繪",
-    font: "classic",
+    font: "wenkai",
     background: { kind: "wood" },
     grid:   { stroke: "#4a3010", width: 1, outer: 3 },
     coord:  { color: "#5a3a1a", font: "serif" },
     river:  { color: "#5a3a1a", style: "italic" },
-    // Pieces now use radial-gradient disks for a 3D feel (highlight upper-left,
-    // shadow lower-right) instead of flat fills.
+    // Classic flat-ish wooden pieces — subtle gradient + drop shadow + inner
+    // ring, but NO glossy specular dot and NO engraved character (those made
+    // the discs look like glass beads instead of wood).
     red:    { fill: "#fff5db", border: "#8b1a0e", innerRing: "#c0392b", text: "#c0392b",
-              grad: { from: "#fff8e8", to: "#e6c47e" } },
+              grad: { from: "#fff5db", to: "#e8c889" } },
     black:  { fill: "#222",    border: "#000",    innerRing: "#888",    text: "#f5f5f5",
-              grad: { from: "#5a5a5a", to: "#0c0c0c" } },
-    piece:  { shadow: "strong", innerRing: true, bevel: true, gradient: true },
+              grad: { from: "#3a3a3a", to: "#101010" } },
+    piece:  { shadow: "soft", innerRing: true, gradient: true,
+              specular: false, engrave: false, rim: false },
     lastMove: { kind: "box",  color: "#2980b9" },
     suggest:  { kind: "ring", color: "#e67e22" },
   },
@@ -283,7 +294,7 @@ const BOARD_STYLES = {
   // "空城計" reference — feels archaeological / textbook-classical.
   stone: {
     label: "雅石回紋",
-    font: "classic",
+    font: "wenkai",
     background: { kind: "stone", color: "#e9dbb4", grain: "#7a5a2a" },
     // The meander now also carries band + bevel info so it reads as a raised
     // ornament instead of a flat printed line.
@@ -306,7 +317,8 @@ const BOARD_STYLES = {
               grad: { from: "#c0392b", to: "#5a0c0a" } },
     black:  { fill: "#2a2a2a", border: "#0c0c0c", innerRing: null, text: "#fbe7c2",
               grad: { from: "#5a5a5a", to: "#0c0c0c" } },
-    piece:  { shadow: "strong", innerRing: false, bevel: true, gradient: true },
+    piece:  { shadow: "strong", innerRing: false, gradient: true,
+              specular: true, engrave: true, rim: true },
     lastMove: { kind: "ring", color: "#d4a043" },
     suggest:  { kind: "ring", color: "#c0392b" },
   },
@@ -315,7 +327,7 @@ const BOARD_STYLES = {
   // The most striking option — feels like a high-end set.
   gilded: {
     label: "鎏金歲月",
-    font: "classic",
+    font: "wenkai",
     background: { kind: "darkmetal", color: "#1a1612" },
     grid:   { stroke: "#c89244", width: 0.9, outer: 1.5, doubleFrame: true, frameColor: "#d4a043" },
     coord:  { color: "#c89244", font: "serif" },
@@ -324,7 +336,8 @@ const BOARD_STYLES = {
               grad: { from: "#c0392b", to: "#5a0c0c" } },
     black:  { fill: "#2a2a2a", border: "#0c0c0c", innerRing: null, text: "#fbeed1",
               grad: { from: "#7a7a7a", to: "#1a1a1a" } },
-    piece:  { shadow: "strong", innerRing: false, bevel: true, gradient: true },
+    piece:  { shadow: "strong", innerRing: false, gradient: true,
+              specular: true, engrave: true, rim: true },
     lastMove: { kind: "ring", color: "#d4a043" },
     suggest:  { kind: "ring", color: "#e26054" },
   },
@@ -471,9 +484,11 @@ function drawBoard(svg, fen, bookMove, engineMove) {
     el("stop", { offset: "100%", "stop-color": "rgba(0,0,0,0)"    }, sg);
   }
 
-  // Specular highlight — small white-fading-to-transparent radial used as an
-  // overlay dot at the upper-left of each piece. Sells the "glossy bead" feel.
-  if (S.piece.bevel) {
+  // Specular highlight — small white radial used as an overlay dot at the
+  // upper-left of each piece. Sells the "glossy bead" feel. Only registered
+  // when the style explicitly opts in (traditional skips this for a more
+  // matte / wood-disc look).
+  if (S.piece.specular) {
     const spc = el("radialGradient", { id: "pspec", cx: "50%", cy: "50%", r: "50%" }, defs);
     el("stop", { offset: "0%",   "stop-color": "rgba(255,255,255,0.85)" }, spc);
     el("stop", { offset: "55%",  "stop-color": "rgba(255,255,255,0.15)" }, spc);
@@ -482,15 +497,36 @@ function drawBoard(svg, fen, bookMove, engineMove) {
 
   // Background
   if (S.background.kind === "wood") {
+    // 1) Vertical gradient — base wood colour with subtle top/bottom darkening
     const grad = el("linearGradient", { id: "wood", x1: "0", y1: "0", x2: "0", y2: "1" }, defs);
-    el("stop", { offset: "0%",   "stop-color": "#cba16b" }, grad);
-    el("stop", { offset: "50%",  "stop-color": "#e6c79b" }, grad);
-    el("stop", { offset: "100%", "stop-color": "#cba16b" }, grad);
-    const pat = el("pattern", { id: "grain", x: "0", y: "0", width: "120", height: "8", patternUnits: "userSpaceOnUse" }, defs);
-    el("line", { x1: 0, y1: 4, x2: 120, y2: 4, stroke: "rgba(110,70,30,0.07)", "stroke-width": 0.6 }, pat);
-    el("line", { x1: 0, y1: 7, x2: 120, y2: 7, stroke: "rgba(110,70,30,0.04)", "stroke-width": 0.4 }, pat);
+    el("stop", { offset: "0%",   "stop-color": "#bb8f5a" }, grad);
+    el("stop", { offset: "50%",  "stop-color": "#e2c089" }, grad);
+    el("stop", { offset: "100%", "stop-color": "#bb8f5a" }, grad);
+    // 2) Real wood grain: feTurbulence (long horizontal stretch via
+    //    asymmetric baseFrequency) creates organic streaks. We pipe it
+    //    through feColorMatrix to recolour the grey-scale noise into warm
+    //    brown ink, then composite at low alpha over the gradient.
+    const fl = el("filter", { id: "woodgrain", x: "0", y: "0", width: "100%", height: "100%" }, defs);
+    el("feTurbulence", { type: "fractalNoise", baseFrequency: "0.035 0.55",
+                         numOctaves: "3", seed: "7", result: "noise" }, fl);
+    el("feColorMatrix", { in: "noise", values:
+      "0 0 0 0 0.35 " +     // R = 0.35
+      "0 0 0 0 0.20 " +     // G = 0.20
+      "0 0 0 0 0.08 " +     // B = 0.08
+      "0 0 0 0.35 0",       // A driven by noise alpha
+      result: "tinted" }, fl);
+    // 3) A second, lower-frequency knotty noise for darker wood ribbons
+    const fl2 = el("filter", { id: "woodgrain2", x: "0", y: "0", width: "100%", height: "100%" }, defs);
+    el("feTurbulence", { type: "fractalNoise", baseFrequency: "0.012 0.18",
+                         numOctaves: "2", seed: "13", result: "noise2" }, fl2);
+    el("feColorMatrix", { in: "noise2", values:
+      "0 0 0 0 0.25 " +
+      "0 0 0 0 0.13 " +
+      "0 0 0 0 0.04 " +
+      "0 0 0 0.20 0" }, fl2);
     el("rect", { x: 0, y: 0, width: 540, height: 600, fill: "url(#wood)" }, svg);
-    el("rect", { x: 0, y: 0, width: 540, height: 600, fill: "url(#grain)" }, svg);
+    el("rect", { x: 0, y: 0, width: 540, height: 600, fill: "#bb8f5a", filter: "url(#woodgrain2)" }, svg);
+    el("rect", { x: 0, y: 0, width: 540, height: 600, fill: "#bb8f5a", filter: "url(#woodgrain)" }, svg);
   } else if (S.background.kind === "paper") {
     const pat = el("pattern", { id: "papergrain", x: "0", y: "0", width: "14", height: "14", patternUnits: "userSpaceOnUse" }, defs);
     el("circle", { cx: 3, cy: 3, r: 0.5, fill: S.background.noise, "fill-opacity": 0.18 }, pat);
@@ -632,12 +668,15 @@ function drawBoard(svg, fen, bookMove, engineMove) {
         const isRed = p === p.toUpperCase();
         const cx = screenX(c), cy = screenY(r);
         const PS = isRed ? S.red : S.black;
-        // Drop shadow — "strong" uses two layers: a wide soft ambient shadow
-        // and a tighter contact shadow directly beneath the piece, which
-        // anchors the piece to the surface much more convincingly.
+        // Drop shadow.
+        //   "strong" → wide ambient + tight contact (glossy/premium pieces)
+        //   "soft"   → just the ambient ellipse (matte / wooden disc feel)
+        //   true     → legacy hard 1.5px offset shadow (kept for back-compat)
         if (S.piece.shadow === "strong") {
           el("ellipse", { cx, cy: cy + 5, rx: 28, ry: 10, fill: "url(#pshadow)" }, svg);
           el("ellipse", { cx, cy: cy + 1.5, rx: 25, ry: 25, fill: "rgba(0,0,0,0.18)" }, svg);
+        } else if (S.piece.shadow === "soft") {
+          el("ellipse", { cx, cy: cy + 4, rx: 26, ry: 7, fill: "url(#pshadow)" }, svg);
         } else if (S.piece.shadow) {
           el("circle", { cx: cx + 1.5, cy: cy + 1.5, r: 26, fill: "rgba(0,0,0,0.22)" }, svg);
         }
@@ -648,27 +687,26 @@ function drawBoard(svg, fen, bookMove, engineMove) {
           stroke: PS.border,
           "stroke-width": 1.5,
         }, svg);
-        // Inner rim shadow — dark thin ring just inside the outer edge,
-        // creating a beveled / domed appearance.
-        if (S.piece.bevel) {
+        // Optional inner-rim shadow (dome bevel)
+        if (S.piece.rim) {
           el("circle", { cx, cy, r: 24.5, fill: "none",
                          stroke: "rgba(0,0,0,0.35)", "stroke-width": 1 }, svg);
         }
-        // Optional inner ring (traditional style only)
+        // Optional inner ring (traditional style)
         if (S.piece.innerRing && PS.innerRing) {
           el("circle", {
             cx, cy, r: 22, fill: "none",
             stroke: PS.innerRing, "stroke-width": 1,
           }, svg);
         }
-        // Specular highlight — glossy bead spot at upper-left
-        if (S.piece.bevel) {
+        // Optional specular highlight — glossy bead spot at upper-left
+        if (S.piece.specular) {
           el("ellipse", { cx: cx - 7, cy: cy - 9, rx: 10, ry: 7, fill: "url(#pspec)" }, svg);
         }
-        // Character — engraved feel: a dark shadow text 1px below the main
-        // glyph creates the illusion the character is pressed into the disk.
+        // Character — optional engraved shadow under main glyph (looks like
+        // the character is pressed into the disc face).
         const PF = PIECE_FONTS[S.font] || PIECE_FONTS.classic;
-        if (S.piece.bevel) {
+        if (S.piece.engrave) {
           const ts = el("text", {
             x: cx, y: cy + PF.dy + 1.2, "text-anchor": "middle",
             "font-size": 28, "font-family": PF.family, "font-weight": PF.weight,
