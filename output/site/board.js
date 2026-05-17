@@ -291,38 +291,69 @@ function currentBoardStyle() {
   return BOARD_STYLES[name] || BOARD_STYLES.traditional;
 }
 
+// Mix two #rrggbb colours; t=0 returns a, t=1 returns b. Used to derive
+// shaded variants (darker band-bottom, etc.) without hand-tuning every theme.
+function mixHex(a, b, t) {
+  const pa = a.replace("#", ""), pb = b.replace("#", "");
+  const ar = parseInt(pa.slice(0, 2), 16), ag = parseInt(pa.slice(2, 4), 16), ab = parseInt(pa.slice(4, 6), 16);
+  const br = parseInt(pb.slice(0, 2), 16), bg = parseInt(pb.slice(2, 4), 16), bb = parseInt(pb.slice(4, 6), 16);
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bl = Math.round(ab + (bb - ab) * t);
+  return "#" + [r, g, bl].map((v) => v.toString(16).padStart(2, "0")).join("");
+}
+
 // Draws a classical 回紋 (meander / key fret) frame as a raised ornament
-// around the play area: solid band ring + outer highlight + inner shadow
-// for 3D depth, then the meander pattern stroked on top in deep ink.
-// `opts` shape: { ink, band, highlight, shadow, bandWidth }.
-// String value is accepted for back-compat (treated as { ink: <string> }).
+// around the play area. Composed of:
+//   1) a band ring filled with a vertical gradient (top lighter, bottom darker
+//      → reads as raised, lit from above)
+//   2) outer perimeter chamfer (2 highlight lines, tight + soft)
+//   3) inner perimeter chamfer (2 shadow lines, tight + soft) plus a thin
+//      reflected-light line just inside the play area
+//   4) the meander units themselves, drawn in two passes (engraved highlight
+//      underneath + dark ink on top)
+// `opts` shape: { ink, band, highlight, shadow, bandDark, bandWidth }.
 function drawMeanderFrame(svg, opts) {
   if (typeof opts === "string") opts = { ink: opts };
   const ink = opts.ink || "#3a2510";
   const band = opts.band;
+  const bandDark = opts.bandDark || mixHex(opts.band || "#cfa46b", "#000000", 0.45);
   const highlight = opts.highlight;
   const shadow = opts.shadow;
   const B = opts.bandWidth || 18;
   const W = 540, H = 600;
 
-  // 1) Solid band ring (hollow rectangle via evenodd fill rule). Painted only
-  //    when band colour is provided; older string-form callers stay flat.
   if (band) {
-    const ringPath = `M 0 0 H ${W} V ${H} H 0 Z M ${B} ${B} V ${H - B} H ${W - B} V ${B} Z`;
-    el("path", { d: ringPath, fill: band, "fill-rule": "evenodd" }, svg);
-    // Outer-edge highlight (warm light catching the raised face)
-    if (highlight) {
-      el("rect", {
-        x: 0.5, y: 0.5, width: W - 1, height: H - 1,
-        fill: "none", stroke: highlight, "stroke-width": 1.2, "stroke-opacity": 0.85,
-      }, svg);
+    // 1) Band ring (hollow rect via evenodd) filled with a vertical gradient
+    //    that simulates the raised face catching light from above.
+    let defs = svg.querySelector("defs");
+    if (!defs) defs = el("defs", {}, svg);
+    if (!svg.querySelector("#bandgrad")) {
+      const bg = el("linearGradient", { id: "bandgrad", x1: "0", y1: "0", x2: "0", y2: "1" }, defs);
+      el("stop", { offset: "0%",   "stop-color": highlight || band }, bg);
+      el("stop", { offset: "45%",  "stop-color": band }, bg);
+      el("stop", { offset: "100%", "stop-color": bandDark }, bg);
     }
-    // Inner-edge shadow (recessed lip toward the play area)
+    const ringPath = `M 0 0 H ${W} V ${H} H 0 Z M ${B} ${B} V ${H - B} H ${W - B} V ${B} Z`;
+    el("path", { d: ringPath, fill: "url(#bandgrad)", "fill-rule": "evenodd" }, svg);
+
+    // 2) Outer-edge double highlight (chamfered raised lip)
+    if (highlight) {
+      el("rect", { x: 0.6, y: 0.6, width: W - 1.2, height: H - 1.2,
+                   fill: "none", stroke: highlight, "stroke-width": 1.4, "stroke-opacity": 0.95 }, svg);
+      el("rect", { x: 2.5, y: 2.5, width: W - 5, height: H - 5,
+                   fill: "none", stroke: highlight, "stroke-width": 0.7, "stroke-opacity": 0.45 }, svg);
+    }
+    // 3) Inner-edge double shadow (recessed lip) + reflected highlight inside
     if (shadow) {
-      el("rect", {
-        x: B - 0.5, y: B - 0.5, width: W - 2 * B + 1, height: H - 2 * B + 1,
-        fill: "none", stroke: shadow, "stroke-width": 1.4, "stroke-opacity": 0.75,
-      }, svg);
+      el("rect", { x: B - 0.5, y: B - 0.5, width: W - 2 * B + 1, height: H - 2 * B + 1,
+                   fill: "none", stroke: shadow, "stroke-width": 1.6, "stroke-opacity": 0.85 }, svg);
+      el("rect", { x: B - 2, y: B - 2, width: W - 2 * B + 4, height: H - 2 * B + 4,
+                   fill: "none", stroke: shadow, "stroke-width": 0.7, "stroke-opacity": 0.45 }, svg);
+      if (highlight) {
+        el("rect", { x: B + 0.8, y: B + 0.8, width: W - 2 * B - 1.6, height: H - 2 * B - 1.6,
+                     fill: "none", stroke: highlight, "stroke-width": 0.4, "stroke-opacity": 0.45 }, svg);
+      }
     }
   }
 
@@ -369,17 +400,21 @@ function drawBoard(svg, fen, bookMove, engineMove) {
   const defs = el("defs", {}, svg);
 
   // Piece radial-gradient registration (used by both red and black where
-  // `red.grad` / `black.grad` are defined). Highlight upper-left, shadow
-  // lower-right — gives an organic 3D bead feel.
+  // `red.grad` / `black.grad` are defined). The hot-spot sits upper-left and
+  // is extended with an explicit white-tinted mid-stop so the highlight pops
+  // before the colour falls into shadow.
   if (S.piece.gradient) {
     for (const side of ["red", "black"]) {
       const g = S[side].grad;
       if (!g) continue;
       const rg = el("radialGradient", {
         id: `pg-${side}`,
-        cx: "32%", cy: "30%", r: "75%",
+        cx: "30%", cy: "25%", r: "85%",
       }, defs);
-      el("stop", { offset: "0%",   "stop-color": g.from }, rg);
+      // Bright tint of the "from" colour to make the highlight read clearly
+      const hot = mixHex(g.from, "#ffffff", 0.35);
+      el("stop", { offset: "0%",   "stop-color": hot }, rg);
+      el("stop", { offset: "28%",  "stop-color": g.from }, rg);
       el("stop", { offset: "100%", "stop-color": g.to   }, rg);
     }
   }
@@ -387,9 +422,18 @@ function drawBoard(svg, fen, bookMove, engineMove) {
   // Soft elliptical drop-shadow for pieces (radial, fades to transparent).
   if (S.piece.shadow) {
     const sg = el("radialGradient", { id: "pshadow", cx: "50%", cy: "50%", r: "50%" }, defs);
-    el("stop", { offset: "0%",   "stop-color": "rgba(0,0,0,0.45)" }, sg);
-    el("stop", { offset: "70%",  "stop-color": "rgba(0,0,0,0.18)" }, sg);
+    el("stop", { offset: "0%",   "stop-color": "rgba(0,0,0,0.55)" }, sg);
+    el("stop", { offset: "65%",  "stop-color": "rgba(0,0,0,0.22)" }, sg);
     el("stop", { offset: "100%", "stop-color": "rgba(0,0,0,0)"    }, sg);
+  }
+
+  // Specular highlight — small white-fading-to-transparent radial used as an
+  // overlay dot at the upper-left of each piece. Sells the "glossy bead" feel.
+  if (S.piece.bevel) {
+    const spc = el("radialGradient", { id: "pspec", cx: "50%", cy: "50%", r: "50%" }, defs);
+    el("stop", { offset: "0%",   "stop-color": "rgba(255,255,255,0.85)" }, spc);
+    el("stop", { offset: "55%",  "stop-color": "rgba(255,255,255,0.15)" }, spc);
+    el("stop", { offset: "100%", "stop-color": "rgba(255,255,255,0)" }, spc);
   }
 
   // Background
@@ -544,10 +588,12 @@ function drawBoard(svg, fen, bookMove, engineMove) {
         const isRed = p === p.toUpperCase();
         const cx = screenX(c), cy = screenY(r);
         const PS = isRed ? S.red : S.black;
-        // Drop shadow — "strong" uses the soft radial-gradient ellipse;
-        // bool true keeps the legacy hard 1.5px offset shadow.
+        // Drop shadow — "strong" uses two layers: a wide soft ambient shadow
+        // and a tighter contact shadow directly beneath the piece, which
+        // anchors the piece to the surface much more convincingly.
         if (S.piece.shadow === "strong") {
-          el("ellipse", { cx, cy: cy + 3, rx: 27, ry: 9, fill: "url(#pshadow)" }, svg);
+          el("ellipse", { cx, cy: cy + 5, rx: 28, ry: 10, fill: "url(#pshadow)" }, svg);
+          el("ellipse", { cx, cy: cy + 1.5, rx: 25, ry: 25, fill: "rgba(0,0,0,0.18)" }, svg);
         } else if (S.piece.shadow) {
           el("circle", { cx: cx + 1.5, cy: cy + 1.5, r: 26, fill: "rgba(0,0,0,0.22)" }, svg);
         }
@@ -558,14 +604,11 @@ function drawBoard(svg, fen, bookMove, engineMove) {
           stroke: PS.border,
           "stroke-width": 1.5,
         }, svg);
-        // Bevel highlight — thin light arc on the upper-left, sells the 3D feel
+        // Inner rim shadow — dark thin ring just inside the outer edge,
+        // creating a beveled / domed appearance.
         if (S.piece.bevel) {
-          el("path", {
-            d: `M ${cx - 18} ${cy - 16} A 24 24 0 0 1 ${cx + 16} ${cy - 18}`,
-            fill: "none",
-            stroke: "rgba(255,255,255,0.35)",
-            "stroke-width": 1.2,
-          }, svg);
+          el("circle", { cx, cy, r: 24.5, fill: "none",
+                         stroke: "rgba(0,0,0,0.35)", "stroke-width": 1 }, svg);
         }
         // Optional inner ring (traditional style only)
         if (S.piece.innerRing && PS.innerRing) {
@@ -574,8 +617,21 @@ function drawBoard(svg, fen, bookMove, engineMove) {
             stroke: PS.innerRing, "stroke-width": 1,
           }, svg);
         }
-        // Character — piece glyph in the style's chosen font family.
+        // Specular highlight — glossy bead spot at upper-left
+        if (S.piece.bevel) {
+          el("ellipse", { cx: cx - 7, cy: cy - 9, rx: 10, ry: 7, fill: "url(#pspec)" }, svg);
+        }
+        // Character — engraved feel: a dark shadow text 1px below the main
+        // glyph creates the illusion the character is pressed into the disk.
         const PF = PIECE_FONTS[S.font] || PIECE_FONTS.classic;
+        if (S.piece.bevel) {
+          const ts = el("text", {
+            x: cx, y: cy + PF.dy + 1.2, "text-anchor": "middle",
+            "font-size": 28, "font-family": PF.family, "font-weight": PF.weight,
+            fill: "rgba(0,0,0,0.45)",
+          }, svg);
+          ts.textContent = PIECE_CHAR[p] || p;
+        }
         const t = el("text", {
           x: cx, y: cy + PF.dy, "text-anchor": "middle",
           "font-size": 28, "font-family": PF.family, "font-weight": PF.weight,

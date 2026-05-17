@@ -15,12 +15,10 @@ import sys
 import time
 from pathlib import Path
 
-from cchess import UciEngine
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from analyze import run_engine  # noqa: E402
 from enrich_depth import load_positions, save_deep, score_cp  # noqa: E402
+from clean_eval import CleanUciEngine  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 EXE = REPO / "engine" / "Windows" / "pikafish-avx2.exe"
@@ -98,23 +96,24 @@ def main():
     if args.dry_run or not todo:
         return
 
-    eng = UciEngine()
-    eng.load(str(EXE))
-    if not eng.wait_for_ready(timeout=15):
-        raise RuntimeError("engine not ready")
+    # CleanUciEngine instead of cchess.UciEngine — see clean_eval.py for why
+    # (cchess thread race trashed 85% of depth-22 entries in earlier runs).
+    eng = CleanUciEngine(str(EXE))
     eng.set_option('Threads', str(args.threads))
     eng.set_option('Hash', str(args.hash_mb))
-    print(f"[engine] Threads={args.threads}  Hash={args.hash_mb}MB", file=sys.stderr)
+    eng.isready()
+    print(f"[engine] Threads={args.threads}  Hash={args.hash_mb}MB (clean driver)",
+          file=sys.stderr)
 
     t0 = time.time()
     try:
         for idx, fen in enumerate(todo, 1):
-            act = run_engine(eng, fen, args.depth)
+            act = eng.go(fen, args.depth)
             deep[fen] = {
                 'best_iccs': act.get('move'),
                 'score': act.get('score') if isinstance(act.get('score'), int) else None,
                 'mate': act.get('mate'),
-                'pv': act.get('moves', [])[:8],
+                'pv': act.get('pv') or [],
                 'depth': args.depth,
             }
             sh = shallow.get(fen, {})
