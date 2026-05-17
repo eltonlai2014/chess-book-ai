@@ -1243,10 +1243,12 @@ function startDemo(mode) {
 
   const depthLabel = mode === 'deep' ? '深22' : '淺12';
   let idx = 0;
-  // PV demo seeds from the ply's resulting position and walks forward by
-  // applying each PV step's ICCS. pv_detail no longer ships fen_after — we
-  // derive it here so positions_view.js stays under the GitHub size limit.
-  let demoFen = ply.fen_after || ply.fen;
+  // Engine PV is relative to the position BEFORE the book's played move
+  // (ply.fen), not after — that's the position the engine analyzed. Seed
+  // from ply.fen and snap the board there immediately so the played move
+  // isn't visually un-moved as part of the animation.
+  let demoFen = ply.fen;
+  drawBoard(SVG_BOARD, demoFen, null, null);
 
   const step = () => {
     if (idx >= pv.length) {
