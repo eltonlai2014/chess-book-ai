@@ -63,6 +63,50 @@ function parseFen(fen) {
   return { rows: byIccsRow, side };
 }
 
+// Apply one ICCS move to a FEN, returning the resulting FEN. Used to derive
+// PV step positions on the fly so we don't have to ship a fen_after per step
+// (saves tens of MB on positions_view.js). Xiangqi has no castling / en-passant
+// / promotion, so a piece overwrite + side flip is the complete update.
+function applyIccs(fen, iccs) {
+  if (!fen || !iccs || iccs.length < 4) return fen;
+  const sp = fen.indexOf(" ");
+  const pos = sp >= 0 ? fen.slice(0, sp) : fen;
+  const side = sp >= 0 ? fen.slice(sp + 1).trim().charAt(0) : "w";
+  const rows = pos.split("/").map((row) => {
+    const arr = [];
+    for (const ch of row) {
+      if (ch >= "1" && ch <= "9") {
+        for (let i = 0; i < +ch; i++) arr.push(".");
+      } else {
+        arr.push(ch);
+      }
+    }
+    while (arr.length < 9) arr.push(".");
+    return arr;
+  });
+  const a = "a".charCodeAt(0);
+  const ff = iccs.charCodeAt(0) - a;
+  const fr = parseInt(iccs[1], 10);
+  const tf = iccs.charCodeAt(2) - a;
+  const tr = parseInt(iccs[3], 10);
+  // FEN row 0 = rank 9 (top), row 9 = rank 0 (bottom).
+  const fromRow = 9 - fr, toRow = 9 - tr;
+  const piece = rows[fromRow][ff];
+  rows[toRow][tf] = piece;
+  rows[fromRow][ff] = ".";
+  const newPos = rows.map((row) => {
+    let out = "", run = 0;
+    for (const ch of row) {
+      if (ch === ".") { run++; continue; }
+      if (run > 0) { out += run; run = 0; }
+      out += ch;
+    }
+    if (run > 0) out += run;
+    return out;
+  }).join("/");
+  return `${newPos} ${side === "w" ? "b" : "w"}`;
+}
+
 function getEntry(fen) {
   return (window.POSITIONS && window.POSITIONS[fen]) || null;
 }
@@ -926,6 +970,23 @@ function annotateTable(vi) {
     const deepBad   = moverDeep != null && moverDeep > 100;
     tr.classList.toggle("ply-trap", shallowOk && deepBad && pastOpening);
 
+    // Branch indicator — this position has more than one move tried across
+    // variations (i.e. it's a decision point in the book tree). Inject a
+    // small badge into the 書譜 cell so the user can scan the table for
+    // decision points without clicking through.
+    const altsHere = ALTS_BY_FEN[ply.fen];
+    const branchCount = altsHere ? altsHere.length : 0;
+    tr.classList.toggle("ply-branch", branchCount > 1);
+    const existingBadge = bookCell.querySelector(".branch-badge");
+    if (existingBadge) existingBadge.remove();
+    if (branchCount > 1) {
+      const badge = document.createElement("span");
+      badge.className = "branch-badge";
+      badge.textContent = branchCount;
+      badge.title = `此局面共有 ${branchCount} 種走法（見右側「本步可選」）`;
+      bookCell.appendChild(badge);
+    }
+
     // chessdb cloud-database overlay — score in red POV (chessdb returns mover-POV,
     // so flip for black plies). Hover shows full book vs cloud-best comparison.
     const cdbCell = tr.querySelector(".cdb");
@@ -1156,6 +1217,10 @@ function startDemo(mode) {
 
   const depthLabel = mode === 'deep' ? '深22' : '淺12';
   let idx = 0;
+  // PV demo seeds from the ply's resulting position and walks forward by
+  // applying each PV step's ICCS. pv_detail no longer ships fen_after — we
+  // derive it here so positions_view.js stays under the GitHub size limit.
+  let demoFen = ply.fen_after || ply.fen;
 
   const step = () => {
     if (idx >= pv.length) {
@@ -1176,7 +1241,8 @@ function startDemo(mode) {
       return;
     }
     const s = pv[idx];
-    drawBoard(SVG_BOARD, s.fen_after, s.iccs, null);
+    demoFen = applyIccs(demoFen, s.iccs);
+    drawBoard(SVG_BOARD, demoFen, s.iccs, null);
     STEP_INFO.innerHTML = `
       <span class="item demo-tag">▶ ${depthLabel} ${idx + 1} / ${pv.length}</span>
       <span class="item"><span class="label">本步</span> ${s.chinese} <code>${s.iccs}</code></span>

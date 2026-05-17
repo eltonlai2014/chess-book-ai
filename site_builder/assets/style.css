@@ -1071,6 +1071,24 @@ table.plies tr.ply-trap td.deep-delta::after {
   font-weight: 700;
 }
 
+/* Branch indicator — this ply is a fork point in the book tree (more than
+   one move tried at this same position across variations). Small fork badge
+   showing the count so the eye picks it up scanning the table. */
+table.plies tr.ply-branch td.book-cn { font-weight: 600; }
+.branch-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--cool);
+  background: var(--cool-soft);
+  border-radius: 3px;
+  font-weight: 500;
+  font-family: var(--font-mono);
+}
+.branch-badge::before { content: "⑂"; margin-right: 2px; }
+
 /* chessdb 雲庫 column — community winrate of book's chosen move. */
 table.plies td.cdb {
   width: 64px;

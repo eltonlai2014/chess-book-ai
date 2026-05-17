@@ -105,6 +105,10 @@ def enrich_positions(positions: dict, deep: dict | None = None, chessdb: dict | 
             ]
 
         def _build_pv_detail(pv_iccs):
+            # fen_after is intentionally omitted: applyIccs() in board.js
+            # derives each step's FEN on the fly. Shipping it per step would
+            # add ~30-40 MB to positions_view.js and push it past GitHub's
+            # 100 MB file limit. Keep iccs + chinese only.
             out = []
             try:
                 board = ChessBoard(fen)
@@ -117,7 +121,6 @@ def enrich_positions(positions: dict, deep: dict | None = None, chessdb: dict | 
                     out.append({
                         'iccs': iccs,
                         'chinese': chinese,
-                        'fen_after': board.to_fen(),
                     })
             except Exception:
                 pass
