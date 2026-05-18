@@ -552,6 +552,13 @@ main.traps-page {
 .traps-table .loss.cdb.confirm { color: var(--note-deep); font-weight: 600; }
 .traps-table .loss.cdb.mild    { color: var(--fg-dim); }
 .traps-legend .leg-label.cdb { color: var(--note-deep); }
+
+/* depth-28 verification column (verify_traps.py output) */
+.traps-table .loss.vdeep         { color: var(--fg-dim); width: 70px; font-weight: 600; }
+.traps-table .loss.vdeep.confirm { color: var(--accent); font-weight: 700; }
+.traps-table .loss.vdeep.mild    { color: var(--note-deep); }
+.traps-table .loss.vdeep.reject  { color: var(--cool); font-weight: 400; }
+.traps-legend .leg-label.vdeep   { color: var(--accent); }
 .traps-table .annote {
   color: var(--fg-dim);
   font-size: 11.5px;

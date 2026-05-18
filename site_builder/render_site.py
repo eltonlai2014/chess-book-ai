@@ -49,6 +49,16 @@ def load_deep():
     return json.loads(m.group(1)) if m else {}
 
 
+def load_very_deep():
+    """Optional depth-28 verification of trap positions (see verify_traps.py)."""
+    path = OUT_DIR / "positions_very_deep.js"
+    if not path.exists():
+        return {}
+    text = path.read_text(encoding='utf-8')
+    m = re.search(r'window\.POSITIONS_VERY_DEEP\s*=\s*(\{.*\});\s*$', text, re.DOTALL)
+    return json.loads(m.group(1)) if m else {}
+
+
 def load_chessdb():
     """Cloud database from chessdb.cn (see site_builder/chessdb_query.py)."""
     path = DATA_DIR / "chessdb_cache.json"
@@ -229,6 +239,7 @@ TRAPS_HTML = """<!DOCTYPE html>
   <span><span class="leg-label">走法</span><span class="leg-hint">中文記譜＋ICCS</span></span>
   <span><span class="leg-label deep">深失</span><span class="leg-hint">depth-22 評定的失分（cp）— 越大越糟</span></span>
   <span><span class="leg-label shallow">淺失</span><span class="leg-hint">depth-12 對同一步的判斷（cp，&lt;50 = 淺算看不出來）</span></span>
+  <span><span class="leg-label vdeep">深28失</span><span class="leg-hint">depth-28 驗證（&gt;100=確認陷阱、30-100=減弱、&lt;30=深算翻案；—=尚未跑）</span></span>
   <span><span class="leg-label cdb">雲失</span><span class="leg-hint">雲庫最佳分 − 此走法分（cp，&gt;50=雲庫也認為差；無=雲庫沒此走法；—=雲庫無此局面）</span></span>
   <span><span class="leg-label">原註解</span><span class="leg-hint">XQF 內既有註解</span></span>
 </div>
@@ -466,7 +477,9 @@ def _cdb_loss_for_played(fen: str, played_iccs: str, chessdb: dict) -> dict | No
     }
 
 
-def compute_game_stats(game: dict, shallow: dict, deep: dict, chessdb: dict | None = None) -> dict:
+def compute_game_stats(game: dict, shallow: dict, deep: dict,
+                       chessdb: dict | None = None,
+                       very_deep: dict | None = None) -> dict:
     """Per-game roll-up surfaced on the index page and trap list."""
     traps = []
     decisive = 0
@@ -496,6 +509,7 @@ def compute_game_stats(game: dict, shallow: dict, deep: dict, chessdb: dict | No
             iccs = p.get('iccs')
             fen = p.get('fen')
             cdb_view = _cdb_loss_for_played(fen, iccs, chessdb or {})
+            vd_loss = _ply_loss(plies, pi, very_deep) if very_deep else None
             traps.append({
                 'vi': vi, 'pi': pi,
                 'fen': fen,
@@ -505,6 +519,7 @@ def compute_game_stats(game: dict, shallow: dict, deep: dict, chessdb: dict | No
                 'annote': (p.get('annote') or '').strip(),
                 'shallow_loss': s_loss,
                 'deep_loss': d_loss,
+                'very_deep_loss': vd_loss,
                 'cdb_loss': cdb_view['cdb_loss'] if cdb_view else None,
                 'cdb_best_score': cdb_view['cdb_best_score'] if cdb_view else None,
                 'cdb_played_score': cdb_view['cdb_played_score'] if cdb_view else None,
@@ -597,6 +612,18 @@ def render_traps_page(games: list, stats_by_file: dict, chessdb: dict | None = N
                     cdb_cell = '<td class="loss cdb" title="雲庫有此局面但無此走法評分"><span class="dim">無</span></td>'
                 else:
                     cdb_cell = '<td class="loss cdb"><span class="dim">—</span></td>'
+                # depth-28 verification column (verify_traps.py).
+                if t.get('very_deep_loss') is not None:
+                    vd = t['very_deep_loss']
+                    if vd > 100:
+                        vd_cls = 'confirm'
+                    elif vd > 30:
+                        vd_cls = 'mild'
+                    else:
+                        vd_cls = 'reject'  # depth-28 says not actually a trap
+                    vd_cell = f'<td class="loss vdeep {vd_cls}">{vd:+d}</td>'
+                else:
+                    vd_cell = '<td class="loss vdeep"><span class="dim">—</span></td>'
                 rows.append(
                     f'<tr>'
                     f'<td class="vp"><a href="{href}">v{t["vi"] + 1}·第{t["pi"] + 1}步</a></td>'
@@ -605,6 +632,7 @@ def render_traps_page(games: list, stats_by_file: dict, chessdb: dict | None = N
                     f'<code>{t["iccs"]}</code></td>'
                     f'<td class="loss deep">+{t["deep_loss"]}</td>'
                     f'<td class="loss shallow">{t["shallow_loss"]:+d}</td>'
+                    f'{vd_cell}'
                     f'{cdb_cell}'
                     f'<td class="annote">{annote_cell}</td>'
                     f'</tr>'
@@ -718,6 +746,7 @@ def _enrich_is_current() -> bool:
     sources = [
         OUT_DIR / "positions.js",
         OUT_DIR / "positions_deep.js",
+        OUT_DIR / "positions_very_deep.js",
         DATA_DIR / "chessdb_cache.json",
     ]
     view_mtime = view.stat().st_mtime
@@ -732,8 +761,11 @@ def main():
     games = load_games()
     positions = load_positions()
     deep = load_deep()
+    very_deep = load_very_deep()
     chessdb = load_chessdb()
-    print(f"[load] {len(games)} games, {len(positions)} positions, {len(deep)} deep, {len(chessdb)} chessdb", file=sys.stderr)
+    print(f"[load] {len(games)} games, {len(positions)} positions, "
+          f"{len(deep)} deep, {len(very_deep)} very-deep, {len(chessdb)} chessdb",
+          file=sys.stderr)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     GAMES_DIR.mkdir(parents=True, exist_ok=True)
@@ -753,7 +785,10 @@ def main():
 
     # Per-game stats need the raw shallow + deep tables, not the enriched ones.
     print("[stats] computing per-game traps + deep coverage", file=sys.stderr)
-    stats_by_file = {g['file']: compute_game_stats(g, positions, deep, chessdb) for g in games}
+    stats_by_file = {
+        g['file']: compute_game_stats(g, positions, deep, chessdb, very_deep)
+        for g in games
+    }
     n_traps = sum(s['trap_count'] for s in stats_by_file.values())
     print(f"[stats] {n_traps} unique traps across {len(games)} games", file=sys.stderr)
 
