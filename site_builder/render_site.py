@@ -222,6 +222,15 @@ TRAPS_HTML = """<!DOCTYPE html>
 <p class="meta"><a class="back" href="index.html">← 回到列表</a> · 共 {n_traps} 個陷阱（淺算 &lt;50cp，深算 &gt;100cp，第 16 步起）</p>
 </header>
 <main class="traps-page">
+<div class="traps-legend">
+  <span class="leg-key">欄位</span>
+  <span><span class="leg-label">變例·步</span><span class="leg-hint">v / 步序，點擊跳到局面</span></span>
+  <span><span class="leg-label">方</span><span class="leg-hint">走子方</span></span>
+  <span><span class="leg-label">走法</span><span class="leg-hint">中文記譜＋ICCS</span></span>
+  <span><span class="leg-label deep">深失</span><span class="leg-hint">depth-22 評定的失分（cp）— 越大越糟</span></span>
+  <span><span class="leg-label shallow">淺失</span><span class="leg-hint">depth-12 對同一步的判斷（cp，&lt;50 = 淺算看不出來）</span></span>
+  <span><span class="leg-label">原註解</span><span class="leg-hint">XQF 內既有註解</span></span>
+</div>
 {sections}
 </main>
 </body>
