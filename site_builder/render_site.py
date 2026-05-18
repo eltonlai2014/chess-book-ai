@@ -222,15 +222,7 @@ TRAPS_HTML = """<!DOCTYPE html>
 <p class="meta"><a class="back" href="index.html">← 回到列表</a> · 共 {n_traps} 個陷阱（淺算 &lt;50cp，深算 &gt;100cp，第 16 步起）</p>
 </header>
 <main class="traps-page">
-<table class="traps-table">
-<thead><tr>
-<th>#</th><th>棋譜</th><th>變例 / 步</th><th>方</th><th>走法</th>
-<th>深失</th><th>淺失</th><th>原註解</th>
-</tr></thead>
-<tbody>
-{rows}
-</tbody>
-</table>
+{sections}
 </main>
 </body>
 </html>
@@ -491,42 +483,87 @@ def compute_game_stats(game: dict, shallow: dict, deep: dict) -> dict:
     }
 
 
-def render_traps_page(games: list, stats_by_file: dict) -> str:
-    """Global "human trap" list across all games, sorted by severity."""
-    rows = []
-    games_by_file = {g['file']: g for g in games}
-    all_traps = []
-    for file, st in stats_by_file.items():
-        for t in st['traps']:
-            all_traps.append({'file': file, **t})
-    # Sort by 棋譜名稱 → 變例 → 步, matching how master scans the page.
-    all_traps.sort(key=lambda t: (display_title(t['file']), t['vi'], t['pi']))
+def _folder_anchor(folder: str) -> str:
+    """ASCII-safe anchor id for a folder (handles 主目錄, AI/順包 etc.)."""
+    import hashlib
+    return 'folder-' + hashlib.sha1(folder.encode('utf-8')).hexdigest()[:10]
 
-    for t in all_traps:
-        g = games_by_file[t['file']]
-        slug = ascii_slug(g['file'])
-        title = display_title(g['file'])
-        side_label = '紅' if t['side'] == 'red' else '黑'
-        annote_cell = escape_html(t['annote'][:40]) if t['annote'] else '<span class="dim">—</span>'
-        # vi/pi are 0-indexed in JS; query string convention matches initGamePage parser.
-        href = f'games/{slug}.html?v={t["vi"]}&p={t["pi"]}'
-        rows.append(
-            f'<tr>'
-            f'<td class="rank">{len(rows) + 1}</td>'
-            f'<td class="game"><a href="{href}">{escape_html(title)}</a></td>'
-            f'<td class="vp">v{t["vi"] + 1} / 第{t["pi"] + 1}步</td>'
-            f'<td class="side {t["side"]}">{side_label}</td>'
-            f'<td class="move">{escape_html(t["chinese"])} <code>{t["iccs"]}</code></td>'
-            f'<td class="loss deep">+{t["deep_loss"]}</td>'
-            f'<td class="loss shallow">{t["shallow_loss"]:+d}</td>'
-            f'<td class="annote">{annote_cell}</td>'
-            f'</tr>'
+
+def _file_anchor(file: str) -> str:
+    return 'file-' + ascii_slug(file).removeprefix('game-')
+
+
+def render_traps_page(games: list, stats_by_file: dict) -> str:
+    """Global trap list grouped by 目錄 → 棋譜.
+
+    Each folder gets an anchor so the index page can deep-link to it
+    (e.g. clicking the "順包 ⚠ 47" badge jumps straight to that section).
+    Within a folder, each file becomes its own table with a header row,
+    so the eye can stay inside one game while scanning rows.
+    """
+    games_by_file = {g['file']: g for g in games}
+
+    # Group: folder -> [(file, traps_for_that_file)] in master's preferred order.
+    by_folder: dict[str, list[tuple[str, list]]] = {}
+    for g in games:
+        traps = stats_by_file.get(g['file'], {}).get('traps') or []
+        if not traps:
+            continue
+        folder = _group_key(g.get('rel_path', g['file']))
+        by_folder.setdefault(folder, []).append((g['file'], traps))
+
+    # Same ordering as the index page: 主目錄 first, then alphabetical.
+    folder_keys = sorted(by_folder.keys(), key=lambda k: (k != '主目錄', k))
+
+    sections_html = []
+    for folder in folder_keys:
+        files_in_folder = sorted(by_folder[folder], key=lambda x: display_title(x[0]))
+        folder_trap_total = sum(len(ts) for _, ts in files_in_folder)
+        folder_id = _folder_anchor(folder)
+
+        file_blocks = []
+        for file, traps in files_in_folder:
+            slug = ascii_slug(file)
+            title = display_title(file)
+            file_id = _file_anchor(file)
+            rows = []
+            for t in traps:
+                side_label = '紅' if t['side'] == 'red' else '黑'
+                annote_cell = (escape_html(t['annote'][:40])
+                               if t['annote'] else '<span class="dim">—</span>')
+                href = f'games/{slug}.html?v={t["vi"]}&p={t["pi"]}'
+                rows.append(
+                    f'<tr>'
+                    f'<td class="vp"><a href="{href}">v{t["vi"] + 1}·第{t["pi"] + 1}步</a></td>'
+                    f'<td class="side {t["side"]}">{side_label}</td>'
+                    f'<td class="move">{escape_html(t["chinese"])} '
+                    f'<code>{t["iccs"]}</code></td>'
+                    f'<td class="loss deep">+{t["deep_loss"]}</td>'
+                    f'<td class="loss shallow">{t["shallow_loss"]:+d}</td>'
+                    f'<td class="annote">{annote_cell}</td>'
+                    f'</tr>'
+                )
+            file_blocks.append(
+                f'<section class="file-block" id="{file_id}">'
+                f'<h3 class="file-head">'
+                f'<a class="file-link" href="games/{slug}.html">{escape_html(title)}</a>'
+                f'<span class="file-count">{len(traps)} 筆</span>'
+                f'</h3>'
+                f'<table class="traps-table"><tbody>{"".join(rows)}</tbody></table>'
+                f'</section>'
+            )
+
+        sections_html.append(
+            f'<section class="folder-block" id="{folder_id}">'
+            f'<h2 class="folder-head">{escape_html(folder)} '
+            f'<span class="folder-count">{folder_trap_total} 筆 · {len(files_in_folder)} 檔</span></h2>'
+            f'{"".join(file_blocks)}'
+            f'</section>'
         )
 
-    return TRAPS_HTML.format(
-        n_traps=len(all_traps),
-        rows='\n'.join(rows) if rows else '<tr><td colspan="8" class="empty">尚無陷阱</td></tr>',
-    )
+    n_total = sum(s['trap_count'] for s in stats_by_file.values())
+    body = '\n'.join(sections_html) if sections_html else '<p class="empty">尚無陷阱</p>'
+    return TRAPS_HTML.format(n_traps=n_total, sections=body)
 
 
 def escape_html(s: str) -> str:
@@ -546,6 +583,11 @@ def render_index(games: list, n_positions: int, stats_by_file: dict, n_traps: in
     sections = []
     for key in sorted_keys:
         members = sorted(groups[key], key=lambda x: x['file'])
+        # Folder-level trap total; rendered next to the <h2> so master can jump
+        # to traps.html#<folder> for "all the chest-thumping in this folder".
+        folder_trap_total = sum(
+            (stats_by_file.get(g['file']) or {}).get('trap_count', 0) for g in members
+        )
         items = []
         for g in members:
             slug = ascii_slug(g['file'])
@@ -553,12 +595,9 @@ def render_index(games: list, n_positions: int, stats_by_file: dict, n_traps: in
             st = stats_by_file.get(g['file']) or {}
             ply_unique = st.get('unique_plies') or sum(len(v) for v in g['variations'])
             ai_mark = ' <span class="ai-mark" title="已手動修正註解的版本">✎</span>' if g.get('rel_path', '').replace('/', '\\').startswith('AI\\') else ''
+            # Decisive + deep-coverage stay per-game (they describe the game's
+            # own analysis state). Trap count moves up to the folder badge.
             badges = []
-            if st.get('trap_count'):
-                badges.append(
-                    f'<span class="badge badge-trap" title="此檔內已發現的陷阱數">'
-                    f'⚠ {st["trap_count"]}</span>'
-                )
             if st.get('decisive_count'):
                 badges.append(
                     f'<span class="badge badge-decisive" title="結局明顯勝負(>300cp)的變例數">'
@@ -579,8 +618,19 @@ def render_index(games: list, n_positions: int, stats_by_file: dict, n_traps: in
                 f'<span class="dim">· {len(g["variations"])} 變例 · {ply_unique} 步</span> '
                 f'{badge_html}</li>'
             )
+
+        folder_badge = ''
+        if folder_trap_total:
+            folder_id = _folder_anchor(key)
+            folder_badge = (
+                f' <a class="badge badge-trap folder-trap-link" '
+                f'href="traps.html#{folder_id}" '
+                f'title="跳到全站陷阱頁的此目錄區段">'
+                f'⚠ {folder_trap_total}</a>'
+            )
         sections.append(
-            f'<section class="category"><h2>{key} <span class="dim">({len(members)})</span></h2>'
+            f'<section class="category"><h2>{escape_html(key)} '
+            f'<span class="dim">({len(members)})</span>{folder_badge}</h2>'
             f'<ul class="game-list">{"".join(items)}</ul></section>'
         )
 
