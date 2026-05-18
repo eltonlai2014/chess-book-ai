@@ -499,7 +499,8 @@ def render_traps_page(games: list, stats_by_file: dict) -> str:
     for file, st in stats_by_file.items():
         for t in st['traps']:
             all_traps.append({'file': file, **t})
-    all_traps.sort(key=lambda t: -t['deep_loss'])
+    # Sort by 棋譜名稱 → 變例 → 步, matching how master scans the page.
+    all_traps.sort(key=lambda t: (display_title(t['file']), t['vi'], t['pi']))
 
     for t in all_traps:
         g = games_by_file[t['file']]
