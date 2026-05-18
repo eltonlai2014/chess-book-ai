@@ -557,6 +557,8 @@ header.game-header .back {
   transition: color var(--duration-fast) var(--easing);
 }
 header.game-header .back:hover { color: var(--accent); text-decoration: none; }
+header.game-header .back-traps { color: var(--accent); }
+header.game-header .back-traps:hover { color: var(--accent-bright); }
 header.game-header .meta {
   font-size: 11px;
   letter-spacing: 0.18em;

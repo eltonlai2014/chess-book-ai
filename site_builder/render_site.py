@@ -247,6 +247,7 @@ GAME_HTML = """<!DOCTYPE html>
 <body>
 <header class="game-header">
 <a class="back" href="../index.html">← 回到列表</a>
+<a class="back back-traps" href="../traps.html#{traps_anchor}" title="跳到全站陷阱頁的此檔區段">⚠ 陷阱列表</a>
 <h1>{title}</h1>
 <span class="meta">變例 {n_var} 條 · 結果 {result}</span>
 <label class="theme-picker">主題
@@ -363,6 +364,7 @@ def render_game(game: dict) -> str:
         variation_options='\n'.join(options),
         variation_tables='\n'.join(tables),
         game_json=json.dumps(game, ensure_ascii=False),
+        traps_anchor=_file_anchor(game['file']),
     )
 
 
