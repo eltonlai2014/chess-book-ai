@@ -743,10 +743,12 @@ def _enrich_is_current() -> bool:
     view = OUT_DIR / "positions_view.js"
     if not view.exists():
         return False
+    # NOTE: positions_very_deep.js intentionally NOT here — it feeds the trap
+    # stats panel only; enrich_positions doesn't consume it, so a new very-deep
+    # cache doesn't invalidate positions_view.js.
     sources = [
         OUT_DIR / "positions.js",
         OUT_DIR / "positions_deep.js",
-        OUT_DIR / "positions_very_deep.js",
         DATA_DIR / "chessdb_cache.json",
     ]
     view_mtime = view.stat().st_mtime
