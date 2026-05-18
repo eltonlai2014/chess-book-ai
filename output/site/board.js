@@ -1435,8 +1435,20 @@ function initGamePage(GAME) {
     }
   });
 
-  // Initial render: variation 0, no ply selected
-  selectVariation(0);
+  // Initial render: variation 0, no ply selected — unless the URL deep-links
+  // to a specific variation/ply (used by traps.html). Query params: ?v=&p=
+  // (0-indexed). Out-of-range values fall back to the safe default.
+  const params = new URLSearchParams(window.location.search);
+  const wantVi = parseInt(params.get('v'), 10);
+  const wantPi = parseInt(params.get('p'), 10);
+  if (Number.isInteger(wantVi) && wantVi >= 0 && wantVi < GAME.variations.length) {
+    selectVariation(wantVi);
+    if (Number.isInteger(wantPi) && wantPi >= 0 && wantPi < GAME.variations[wantVi].length) {
+      activatePly(wantPi);
+    }
+  } else {
+    selectVariation(0);
+  }
 }
 
 window.initGamePage = initGamePage;

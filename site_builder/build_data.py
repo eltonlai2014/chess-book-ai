@@ -16,11 +16,12 @@ from collections import defaultdict
 from pathlib import Path
 
 import cchess
-from cchess import read_from_xqf, UciEngine, ChessBoard
+from cchess import read_from_xqf, ChessBoard
+from clean_eval import CleanUciEngine
 
 # Reuse engine driver from analyze.py
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from analyze import run_engine, iccs_to_text  # noqa: E402
+from analyze import iccs_to_text  # noqa: E402
 
 
 def _cjk_ratio(s: str) -> float:
@@ -266,28 +267,34 @@ def save_positions(path: Path, positions: dict):
     path.write_text(f"window.POSITIONS = {payload};\n", encoding='utf-8')
 
 
-def evaluate(fens, depth, existing):
-    """Run engine on every FEN not in `existing`. Return merged dict."""
+def evaluate(fens, depth, existing, threads=1, hash_mb=16):
+    """Run engine on every FEN not in `existing`. Return merged dict.
+
+    Uses CleanUciEngine (single-threaded synchronous driver) instead of
+    cchess.UciEngine — the latter has a stdout-reader race that corrupted
+    ~85% of depth-22 evals before we caught it. Shallow depth-12 is less
+    affected (less search time = less interleaving) but using the clean
+    driver everywhere eliminates the class of bug entirely."""
     todo = [f for f in fens if f not in existing]
     print(f"  positions: {len(fens)} unique, {len(todo)} new, {len(fens) - len(todo)} cached", file=sys.stderr)
     if not todo:
         return existing
 
-    eng = UciEngine()
-    eng.load(str(EXE))
-    if not eng.wait_for_ready(timeout=15):
-        raise RuntimeError("engine not ready")
+    eng = CleanUciEngine(str(EXE))
+    eng.set_option('Threads', str(threads))
+    eng.set_option('Hash', str(hash_mb))
+    eng.isready()
 
     results = dict(existing)
     t0 = time.time()
     try:
         for idx, fen in enumerate(todo, 1):
-            act = run_engine(eng, fen, depth)
+            act = eng.go(fen, depth)
             entry = {
                 'best_iccs': act.get('move'),
                 'score': act.get('score') if isinstance(act.get('score'), int) else None,
                 'mate': act.get('mate'),
-                'pv': act.get('moves', [])[:8],
+                'pv': (act.get('pv') or [])[:8],
                 'depth': depth,
             }
             results[fen] = entry
@@ -301,7 +308,7 @@ def evaluate(fens, depth, existing):
                 save_positions(POSITIONS_JS, results)
     finally:
         try:
-            eng.quit()
+            eng._send('quit')
         except Exception:
             pass
     return results
@@ -310,6 +317,8 @@ def evaluate(fens, depth, existing):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('-d', '--depth', type=int, default=14)
+    ap.add_argument('--threads', type=int, default=1, help='Pikafish Threads option (default 1 to keep CPU free)')
+    ap.add_argument('--hash-mb', type=int, default=16, help='Pikafish Hash size in MB')
     ap.add_argument('--limit', type=int, default=None, help='Process only first N files (smoke test)')
     ap.add_argument('--src', default=str(SRC_DIR))
     args = ap.parse_args()
@@ -332,7 +341,7 @@ def main():
     existing = load_existing_positions(POSITIONS_JS)
     print(f"[cache] {len(existing)} positions in {POSITIONS_JS.name}", file=sys.stderr)
 
-    results = evaluate(fens, args.depth, existing)
+    results = evaluate(fens, args.depth, existing, threads=args.threads, hash_mb=args.hash_mb)
     save_positions(POSITIONS_JS, results)
     print(f"[write] {POSITIONS_JS} ({len(results)} positions)", file=sys.stderr)
 

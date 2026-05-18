@@ -18,6 +18,10 @@ from cchess import ChessBoard
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parent))
 from build_data import _to_trad  # noqa: E402
+from enrich_depth import score_cp  # noqa: E402
+
+# Keep this in sync with site_builder/find_trap_plies.py and assets/board.js.
+SKIP_OPENING_PLIES = 15
 
 REPO = Path(__file__).resolve().parent.parent
 OUT_DIR = REPO / "output" / "site"
@@ -170,7 +174,7 @@ INDEX_HTML = """<!DOCTYPE html>
 </head>
 <body>
 <header><h1>象棋書譜 × Pikafish 對照</h1>
-<p class="meta">共 {n_games} 個棋譜檔 · {n_positions} 個唯一局面已分析</p>
+<p class="meta">共 {n_games} 個棋譜檔 · {n_positions} 個唯一局面已分析 · <a class="traps-link" href="traps.html">⚠ 全站陷阱 {n_traps}</a></p>
 <label class="theme-picker">主題
 <select id="themePicker" onchange="setTheme(this.value)">
 <option value="amber">琥珀 Amber</option>
@@ -192,6 +196,41 @@ INDEX_HTML = """<!DOCTYPE html>
 </script>
 <main class="categories">
 {items}
+</main>
+</body>
+</html>
+"""
+
+TRAPS_HTML = """<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>全站陷阱列表 — 象棋書譜 × Pikafish</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=IBM+Plex+Sans+TC:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+TC:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+<script>
+  (function() {{
+    var t = localStorage.getItem('chessbookTheme') || 'amber';
+    document.documentElement.dataset.theme = t;
+  }})();
+</script>
+</head>
+<body>
+<header><h1>⚠ 全站陷阱列表</h1>
+<p class="meta"><a class="back" href="index.html">← 回到列表</a> · 共 {n_traps} 個陷阱（淺算 &lt;50cp，深算 &gt;100cp，第 16 步起）</p>
+</header>
+<main class="traps-page">
+<table class="traps-table">
+<thead><tr>
+<th>#</th><th>棋譜</th><th>變例 / 步</th><th>方</th><th>走法</th>
+<th>深失</th><th>淺失</th><th>原註解</th>
+</tr></thead>
+<tbody>
+{rows}
+</tbody>
+</table>
 </main>
 </body>
 </html>
@@ -346,7 +385,155 @@ def _group_key(rel_path: str) -> str:
     return '主目錄'
 
 
-def render_index(games: list, n_positions: int) -> str:
+def _count_tree_plies(tree: dict | None) -> int:
+    """Total non-root nodes in the move tree = unique plies after dedup."""
+    if not tree:
+        return 0
+    total = 0
+    stack = list(tree.get('children') or [])
+    while stack:
+        node = stack.pop()
+        total += 1
+        stack.extend(node.get('children') or [])
+    return total
+
+
+def _ply_loss(plies: list, pi: int, table: dict) -> int | None:
+    """Centipawn loss the mover at ply pi took, per `table` (shallow or deep).
+    Uses the same formula as find_trap_plies.py: score(fen[pi]) + score(fen[pi+1]),
+    both POV-relative to their respective side-to-move."""
+    if pi >= len(plies) - 1:
+        return None
+    fa = plies[pi].get('fen')
+    fb = plies[pi + 1].get('fen')
+    if not fa or not fb:
+        return None
+    ea = table.get(fa)
+    eb = table.get(fb)
+    if not ea or not eb:
+        return None
+    sa = score_cp(ea)
+    sb = score_cp(eb)
+    if sa is None or sb is None:
+        return None
+    return sa + sb
+
+
+def _last_position_score(plies: list, deep: dict, shallow: dict) -> int | None:
+    """Score (mover-POV) of the variation's final position. Prefers deep."""
+    if not plies:
+        return None
+    fen = plies[-1].get('fen')
+    if not fen:
+        return None
+    entry = deep.get(fen) or shallow.get(fen)
+    return score_cp(entry) if entry else None
+
+
+def compute_game_stats(game: dict, shallow: dict, deep: dict) -> dict:
+    """Per-game roll-up surfaced on the index page and trap list."""
+    traps = []
+    decisive = 0
+    fens_in_game = set()
+    fens_with_deep = set()
+
+    for vi, plies in enumerate(game['variations']):
+        for p in plies:
+            fen = p.get('fen')
+            if fen:
+                fens_in_game.add(fen)
+                if fen in deep:
+                    fens_with_deep.add(fen)
+        # decisive = mover at the final ply is losing by >300cp (in red-POV).
+        final = _last_position_score(plies, deep, shallow)
+        if final is not None and abs(final) > 300:
+            decisive += 1
+        # walk plies looking for the "shallow-blind deep-blunder" pattern.
+        for pi in range(SKIP_OPENING_PLIES, len(plies) - 1):
+            d_loss = _ply_loss(plies, pi, deep)
+            if d_loss is None or d_loss <= 100 or d_loss >= 2000:
+                continue
+            s_loss = _ply_loss(plies, pi, shallow)
+            if s_loss is None or s_loss >= 50:
+                continue
+            p = plies[pi]
+            traps.append({
+                'vi': vi, 'pi': pi,
+                'fen': p.get('fen'),
+                'side': p.get('side'),
+                'iccs': p.get('iccs'),
+                'chinese': p.get('chinese'),
+                'annote': (p.get('annote') or '').strip(),
+                'shallow_loss': s_loss,
+                'deep_loss': d_loss,
+            })
+
+    # Dedupe traps by FEN — same blunder reached via different prefixes is one
+    # finding. Keep the earliest (vi, pi) so deep-links jump to the natural
+    # place in the variation list.
+    seen = set()
+    unique_traps = []
+    for t in sorted(traps, key=lambda t: (t['vi'], t['pi'])):
+        if t['fen'] in seen:
+            continue
+        seen.add(t['fen'])
+        unique_traps.append(t)
+
+    n_fens = len(fens_in_game)
+    return {
+        'unique_plies': _count_tree_plies(game.get('tree')),
+        'traps': unique_traps,
+        'trap_count': len(unique_traps),
+        'decisive_count': decisive,
+        'deep_coverage': (len(fens_with_deep) / n_fens) if n_fens else 0.0,
+        'n_fens': n_fens,
+        'n_deep': len(fens_with_deep),
+    }
+
+
+def render_traps_page(games: list, stats_by_file: dict) -> str:
+    """Global "human trap" list across all games, sorted by severity."""
+    rows = []
+    games_by_file = {g['file']: g for g in games}
+    all_traps = []
+    for file, st in stats_by_file.items():
+        for t in st['traps']:
+            all_traps.append({'file': file, **t})
+    all_traps.sort(key=lambda t: -t['deep_loss'])
+
+    for t in all_traps:
+        g = games_by_file[t['file']]
+        slug = ascii_slug(g['file'])
+        title = display_title(g['file'])
+        side_label = '紅' if t['side'] == 'red' else '黑'
+        annote_cell = escape_html(t['annote'][:40]) if t['annote'] else '<span class="dim">—</span>'
+        # vi/pi are 0-indexed in JS; query string convention matches initGamePage parser.
+        href = f'games/{slug}.html?v={t["vi"]}&p={t["pi"]}'
+        rows.append(
+            f'<tr>'
+            f'<td class="rank">{len(rows) + 1}</td>'
+            f'<td class="game"><a href="{href}">{escape_html(title)}</a></td>'
+            f'<td class="vp">v{t["vi"] + 1} / 第{t["pi"] + 1}步</td>'
+            f'<td class="side {t["side"]}">{side_label}</td>'
+            f'<td class="move">{escape_html(t["chinese"])} <code>{t["iccs"]}</code></td>'
+            f'<td class="loss deep">+{t["deep_loss"]}</td>'
+            f'<td class="loss shallow">{t["shallow_loss"]:+d}</td>'
+            f'<td class="annote">{annote_cell}</td>'
+            f'</tr>'
+        )
+
+    return TRAPS_HTML.format(
+        n_traps=len(all_traps),
+        rows='\n'.join(rows) if rows else '<tr><td colspan="8" class="empty">尚無陷阱</td></tr>',
+    )
+
+
+def escape_html(s: str) -> str:
+    return (str(s).replace('&', '&amp;').replace('<', '&lt;')
+            .replace('>', '&gt;').replace('"', '&quot;'))
+
+
+def render_index(games: list, n_positions: int, stats_by_file: dict, n_traps: int) -> str:
     groups = {}
     for g in games:
         key = _group_key(g.get('rel_path', g['file']))
@@ -362,11 +549,34 @@ def render_index(games: list, n_positions: int) -> str:
         for g in members:
             slug = ascii_slug(g['file'])
             title = display_title(g['file'])
-            ply_total = sum(len(v) for v in g['variations'])
+            st = stats_by_file.get(g['file']) or {}
+            ply_unique = st.get('unique_plies') or sum(len(v) for v in g['variations'])
             ai_mark = ' <span class="ai-mark" title="已手動修正註解的版本">✎</span>' if g.get('rel_path', '').replace('/', '\\').startswith('AI\\') else ''
+            badges = []
+            if st.get('trap_count'):
+                badges.append(
+                    f'<span class="badge badge-trap" title="此檔內已發現的陷阱數">'
+                    f'⚠ {st["trap_count"]}</span>'
+                )
+            if st.get('decisive_count'):
+                badges.append(
+                    f'<span class="badge badge-decisive" title="結局明顯勝負(>300cp)的變例數">'
+                    f'★ {st["decisive_count"]}</span>'
+                )
+            dc = st.get('deep_coverage')
+            if dc is not None and st.get('n_fens'):
+                pct = round(dc * 100)
+                cls = 'good' if pct >= 95 else ('partial' if pct >= 50 else 'low')
+                badges.append(
+                    f'<span class="badge badge-deep deep-{cls}" '
+                    f'title="深算覆蓋率 — {st["n_deep"]} / {st["n_fens"]} 個局面有 depth-22 評分">'
+                    f'深 {pct}%</span>'
+                )
+            badge_html = ' '.join(badges)
             items.append(
                 f'<li><a href="games/{slug}.html">{title}</a>{ai_mark} '
-                f'<span class="dim">· {len(g["variations"])} 變例 · {ply_total} 步</span></li>'
+                f'<span class="dim">· {len(g["variations"])} 變例 · {ply_unique} 步</span> '
+                f'{badge_html}</li>'
             )
         sections.append(
             f'<section class="category"><h2>{key} <span class="dim">({len(members)})</span></h2>'
@@ -376,25 +586,59 @@ def render_index(games: list, n_positions: int) -> str:
     return INDEX_HTML.format(
         n_games=len(games),
         n_positions=n_positions,
+        n_traps=n_traps,
         items='\n'.join(sections),
     )
 
 
+def _enrich_is_current() -> bool:
+    """True iff positions_view.js exists AND is newer than every source it
+    derives from. Lets us skip the slow `[enrich]` step when only games.json
+    (annote text) changed — annote isn't in positions_view.js at all."""
+    view = OUT_DIR / "positions_view.js"
+    if not view.exists():
+        return False
+    sources = [
+        OUT_DIR / "positions.js",
+        OUT_DIR / "positions_deep.js",
+        DATA_DIR / "chessdb_cache.json",
+    ]
+    view_mtime = view.stat().st_mtime
+    for src in sources:
+        if src.exists() and src.stat().st_mtime > view_mtime:
+            return False
+    return True
+
+
 def main():
+    fast = '--fast' in sys.argv
     games = load_games()
     positions = load_positions()
     deep = load_deep()
     chessdb = load_chessdb()
     print(f"[load] {len(games)} games, {len(positions)} positions, {len(deep)} deep, {len(chessdb)} chessdb", file=sys.stderr)
 
-    print("[enrich] computing Chinese notation + PV fen-after + deep + chessdb overlay", file=sys.stderr)
-    positions = enrich_positions(positions, deep, chessdb)
-
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     GAMES_DIR.mkdir(parents=True, exist_ok=True)
     view_path = OUT_DIR / "positions_view.js"
-    save_positions_view(view_path, positions)
-    print(f"[write] {view_path}", file=sys.stderr)
+
+    skip_enrich = fast or _enrich_is_current()
+    if skip_enrich:
+        reason = "explicit --fast" if fast else "positions_view.js is newer than all eval sources"
+        print(f"[skip] enrich — {reason} (reusing {view_path.name})", file=sys.stderr)
+        enriched_count = len(positions)
+    else:
+        print("[enrich] computing Chinese notation + PV fen-after + deep + chessdb overlay", file=sys.stderr)
+        enriched = enrich_positions(positions, deep, chessdb)
+        save_positions_view(view_path, enriched)
+        enriched_count = len(enriched)
+        print(f"[write] {view_path}", file=sys.stderr)
+
+    # Per-game stats need the raw shallow + deep tables, not the enriched ones.
+    print("[stats] computing per-game traps + deep coverage", file=sys.stderr)
+    stats_by_file = {g['file']: compute_game_stats(g, positions, deep) for g in games}
+    n_traps = sum(s['trap_count'] for s in stats_by_file.values())
+    print(f"[stats] {n_traps} unique traps across {len(games)} games", file=sys.stderr)
 
     # Copy static assets
     for asset in ('style.css', 'board.js'):
@@ -412,9 +656,16 @@ def main():
         path.write_text(render_game(g), encoding='utf-8')
     print(f"[write] {len(games)} game pages", file=sys.stderr)
 
-    # Index
-    (OUT_DIR / "index.html").write_text(render_index(games, len(positions)), encoding='utf-8')
-    print(f"[write] index.html", file=sys.stderr)
+    # Index + global trap list
+    (OUT_DIR / "index.html").write_text(
+        render_index(games, enriched_count, stats_by_file, n_traps),
+        encoding='utf-8',
+    )
+    (OUT_DIR / "traps.html").write_text(
+        render_traps_page(games, stats_by_file),
+        encoding='utf-8',
+    )
+    print(f"[write] index.html + traps.html", file=sys.stderr)
 
     # Mirror to /docs/ so GitHub Pages can serve it (Pages source dropdown only
     # lets you pick `/(root)` or `/docs`, not arbitrary subfolders).
