@@ -548,6 +548,10 @@ main.traps-page {
 .traps-table .loss       { font-family: var(--font-mono); text-align: right; }
 .traps-table .loss.deep    { color: var(--accent); font-weight: 700; width: 70px; }
 .traps-table .loss.shallow { color: var(--fg-faint); width: 70px; }
+.traps-table .loss.cdb         { color: var(--fg-dim); width: 70px; }
+.traps-table .loss.cdb.confirm { color: var(--note-deep); font-weight: 600; }
+.traps-table .loss.cdb.mild    { color: var(--fg-dim); }
+.traps-legend .leg-label.cdb { color: var(--note-deep); }
 .traps-table .annote {
   color: var(--fg-dim);
   font-size: 11.5px;

@@ -229,6 +229,7 @@ TRAPS_HTML = """<!DOCTYPE html>
   <span><span class="leg-label">走法</span><span class="leg-hint">中文記譜＋ICCS</span></span>
   <span><span class="leg-label deep">深失</span><span class="leg-hint">depth-22 評定的失分（cp）— 越大越糟</span></span>
   <span><span class="leg-label shallow">淺失</span><span class="leg-hint">depth-12 對同一步的判斷（cp，&lt;50 = 淺算看不出來）</span></span>
+  <span><span class="leg-label cdb">雲失</span><span class="leg-hint">雲庫最佳分 − 此走法分（cp，&gt;50=雲庫也認為差；無=雲庫沒此走法；—=雲庫無此局面）</span></span>
   <span><span class="leg-label">原註解</span><span class="leg-hint">XQF 內既有註解</span></span>
 </div>
 {sections}
@@ -433,7 +434,39 @@ def _last_position_score(plies: list, deep: dict, shallow: dict) -> int | None:
     return score_cp(entry) if entry else None
 
 
-def compute_game_stats(game: dict, shallow: dict, deep: dict) -> dict:
+def _cdb_loss_for_played(fen: str, played_iccs: str, chessdb: dict) -> dict | None:
+    """Compare the played move against chessdb's best move at this FEN.
+
+    Returns dict with cdb_best_score / cdb_played_score / cdb_loss (all in
+    mover-POV cp, like the engine fields), or None if chessdb doesn't have
+    this FEN or the played move isn't in its rated list.
+    cdb_loss positive = chessdb agrees the played move was worse than its
+    top suggestion (cross-validates the trap)."""
+    entry = chessdb.get(fen) if chessdb else None
+    if not entry:
+        return None
+    best = entry.get('best_iccs') or entry.get('cdb_best_iccs')
+    best_score = entry.get('score') if entry.get('score') is not None else entry.get('cdb_best_score')
+    if best_score is None:
+        return None
+    moves = entry.get('moves') or entry.get('cdb_moves') or []
+    played_score = None
+    played_winrate = None
+    for m in moves:
+        if m.get('iccs') == played_iccs:
+            played_score = m.get('score')
+            played_winrate = m.get('winrate')
+            break
+    return {
+        'cdb_best_iccs': best,
+        'cdb_best_score': best_score,
+        'cdb_played_score': played_score,
+        'cdb_played_winrate': played_winrate,
+        'cdb_loss': (best_score - played_score) if played_score is not None else None,
+    }
+
+
+def compute_game_stats(game: dict, shallow: dict, deep: dict, chessdb: dict | None = None) -> dict:
     """Per-game roll-up surfaced on the index page and trap list."""
     traps = []
     decisive = 0
@@ -460,15 +493,21 @@ def compute_game_stats(game: dict, shallow: dict, deep: dict) -> dict:
             if s_loss is None or s_loss >= 50:
                 continue
             p = plies[pi]
+            iccs = p.get('iccs')
+            fen = p.get('fen')
+            cdb_view = _cdb_loss_for_played(fen, iccs, chessdb or {})
             traps.append({
                 'vi': vi, 'pi': pi,
-                'fen': p.get('fen'),
+                'fen': fen,
                 'side': p.get('side'),
-                'iccs': p.get('iccs'),
+                'iccs': iccs,
                 'chinese': p.get('chinese'),
                 'annote': (p.get('annote') or '').strip(),
                 'shallow_loss': s_loss,
                 'deep_loss': d_loss,
+                'cdb_loss': cdb_view['cdb_loss'] if cdb_view else None,
+                'cdb_best_score': cdb_view['cdb_best_score'] if cdb_view else None,
+                'cdb_played_score': cdb_view['cdb_played_score'] if cdb_view else None,
             })
 
     # Dedupe traps by FEN — same blunder reached via different prefixes is one
@@ -504,7 +543,7 @@ def _file_anchor(file: str) -> str:
     return 'file-' + ascii_slug(file).removeprefix('game-')
 
 
-def render_traps_page(games: list, stats_by_file: dict) -> str:
+def render_traps_page(games: list, stats_by_file: dict, chessdb: dict | None = None) -> str:
     """Global trap list grouped by 目錄 → 棋譜.
 
     Each folder gets an anchor so the index page can deep-link to it
@@ -543,6 +582,21 @@ def render_traps_page(games: list, stats_by_file: dict) -> str:
                 annote_cell = (escape_html(t['annote'][:40])
                                if t['annote'] else '<span class="dim">—</span>')
                 href = f'games/{slug}.html?v={t["vi"]}&p={t["pi"]}'
+                # cdb_loss cross-check: positive = chessdb agrees this was worse
+                # than its top suggestion. None = chessdb has no data or played
+                # move isn't in its rated list.
+                if t.get('cdb_loss') is not None:
+                    cls = 'confirm' if t['cdb_loss'] > 50 else 'mild'
+                    cdb_cell = (
+                        f'<td class="loss cdb {cls}" '
+                        f'title="雲庫最佳 {t["cdb_best_score"]:+d}cp，'
+                        f'此走法 {t["cdb_played_score"]:+d}cp">'
+                        f'{t["cdb_loss"]:+d}</td>'
+                    )
+                elif chessdb and t['fen'] in chessdb:
+                    cdb_cell = '<td class="loss cdb" title="雲庫有此局面但無此走法評分"><span class="dim">無</span></td>'
+                else:
+                    cdb_cell = '<td class="loss cdb"><span class="dim">—</span></td>'
                 rows.append(
                     f'<tr>'
                     f'<td class="vp"><a href="{href}">v{t["vi"] + 1}·第{t["pi"] + 1}步</a></td>'
@@ -551,6 +605,7 @@ def render_traps_page(games: list, stats_by_file: dict) -> str:
                     f'<code>{t["iccs"]}</code></td>'
                     f'<td class="loss deep">+{t["deep_loss"]}</td>'
                     f'<td class="loss shallow">{t["shallow_loss"]:+d}</td>'
+                    f'{cdb_cell}'
                     f'<td class="annote">{annote_cell}</td>'
                     f'</tr>'
                 )
@@ -698,7 +753,7 @@ def main():
 
     # Per-game stats need the raw shallow + deep tables, not the enriched ones.
     print("[stats] computing per-game traps + deep coverage", file=sys.stderr)
-    stats_by_file = {g['file']: compute_game_stats(g, positions, deep) for g in games}
+    stats_by_file = {g['file']: compute_game_stats(g, positions, deep, chessdb) for g in games}
     n_traps = sum(s['trap_count'] for s in stats_by_file.values())
     print(f"[stats] {n_traps} unique traps across {len(games)} games", file=sys.stderr)
 
@@ -724,7 +779,7 @@ def main():
         encoding='utf-8',
     )
     (OUT_DIR / "traps.html").write_text(
-        render_traps_page(games, stats_by_file),
+        render_traps_page(games, stats_by_file, chessdb),
         encoding='utf-8',
     )
     print(f"[write] index.html + traps.html", file=sys.stderr)
