@@ -554,6 +554,34 @@ main.traps-page {
 .traps-table .loss.vdeep.mild    { color: var(--note-deep); }
 .traps-table .loss.vdeep.reject  { color: var(--cool); font-weight: 400; }
 .traps-legend .leg-label.vdeep   { color: var(--accent); }
+
+/* Brilliants page reuses the traps-table classes but flips the sentiment:
+   .gain.deep = mover-positive (jade/cool), .gain.vdeep.confirm = depth-28
+   keeps the gain (also jade), .gain.vdeep.reject = depth-28 retracted it. */
+.traps-table .gain         { font-family: var(--font-mono); text-align: right; width: 70px; }
+.traps-table .gain.deep    { color: var(--cool); font-weight: 700; }
+.traps-table .gain.vdeep         { color: var(--fg-dim); font-weight: 600; }
+.traps-table .gain.vdeep.confirm { color: var(--cool); font-weight: 700; }
+.traps-table .gain.vdeep.mild    { color: var(--note-deep); }
+.traps-table .gain.vdeep.reject  { color: var(--accent); font-weight: 400; }
+
+/* Index folder badge + header link parity with trap variants. */
+.game-list .badge.badge-brilliant,
+.category h2 .folder-trap-link.badge-brilliant {
+  color: var(--cool);
+  background: var(--cool-soft);
+}
+.category h2 .folder-trap-link.badge-brilliant:hover {
+  background: var(--cool);
+  color: white;
+}
+header .traps-link.brilliants-link {
+  color: var(--cool);
+  border-bottom-color: var(--cool-soft);
+}
+header .traps-link.brilliants-link:hover { border-bottom-style: solid; }
+header.game-header .back-brilliants { color: var(--cool); }
+header.game-header .back-brilliants:hover { color: var(--cool); filter: brightness(1.2); }
 .traps-table .annote {
   color: var(--fg-dim);
   font-size: 11.5px;

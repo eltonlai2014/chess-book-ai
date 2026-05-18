@@ -184,7 +184,7 @@ INDEX_HTML = """<!DOCTYPE html>
 </head>
 <body>
 <header><h1>象棋書譜 × Pikafish 對照</h1>
-<p class="meta">共 {n_games} 個棋譜檔 · {n_positions} 個唯一局面已分析 · <a class="traps-link" href="traps.html">⚠ 全站陷阱 {n_traps}</a></p>
+<p class="meta">共 {n_games} 個棋譜檔 · {n_positions} 個唯一局面已分析 · <a class="traps-link" href="traps.html">⚠ 全站陷阱 {n_traps}</a> · <a class="traps-link brilliants-link" href="brilliants.html">✨ 妙手榜 {n_brilliants}</a></p>
 <label class="theme-picker">主題
 <select id="themePicker" onchange="setTheme(this.value)">
 <option value="amber">琥珀 Amber</option>
@@ -248,6 +248,43 @@ TRAPS_HTML = """<!DOCTYPE html>
 </html>
 """
 
+BRILLIANTS_HTML = """<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>妙手榜 — 象棋書譜 × Pikafish</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=IBM+Plex+Sans+TC:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+TC:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+<script>
+  (function() {{
+    var t = localStorage.getItem('chessbookTheme') || 'amber';
+    document.documentElement.dataset.theme = t;
+  }})();
+</script>
+</head>
+<body>
+<header><h1>✨ 妙手榜</h1>
+<p class="meta"><a class="back" href="index.html">← 回到列表</a> · 共 {n_total} 個妙手候選（gain {gain_min}-{gain_max}cp，超過 {gain_max} 多為 horizon-effect 雜訊，第 16 步起）</p>
+</header>
+<main class="traps-page">
+<div class="traps-legend">
+  <span class="leg-key">欄位</span>
+  <span><span class="leg-label">變例·步</span><span class="leg-hint">v / 步序，點擊跳到局面</span></span>
+  <span><span class="leg-label">方</span><span class="leg-hint">走子方</span></span>
+  <span><span class="leg-label">走法</span><span class="leg-hint">中文記譜＋ICCS</span></span>
+  <span><span class="leg-label deep">深得</span><span class="leg-hint">depth-22 mover 比 engine 預估多賺到的 cp — 越大越亮眼但也越可能是雜訊</span></span>
+  <span><span class="leg-label shallow">淺Δ</span><span class="leg-hint">depth-12 對同一步的判斷（cp，&lt;50 = 淺算看不出這是妙手）</span></span>
+  <span><span class="leg-label vdeep">深28得</span><span class="leg-hint">depth-28 驗證（&gt;50=確認妙手、0-50=減弱、&lt;0=深算翻案；—=尚未跑）</span></span>
+  <span><span class="leg-label">原註解</span><span class="leg-hint">XQF 內既有註解</span></span>
+</div>
+{sections}
+</main>
+</body>
+</html>
+"""
+
 GAME_HTML = """<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -268,6 +305,7 @@ GAME_HTML = """<!DOCTYPE html>
 <header class="game-header">
 <a class="back" href="../index.html">← 回到列表</a>
 <a class="back back-traps" href="../traps.html#{traps_anchor}" title="跳到全站陷阱頁的此檔區段">⚠ 陷阱列表</a>
+<a class="back back-brilliants" href="../brilliants.html#{traps_anchor}" title="跳到妙手榜的此檔區段">✨ 妙手榜</a>
 <h1>{title}</h1>
 <span class="meta">變例 {n_var} 條 · 結果 {result}</span>
 <label class="theme-picker">主題
@@ -476,6 +514,52 @@ def _cdb_loss_for_played(fen: str, played_iccs: str, chessdb: dict) -> dict | No
     }
 
 
+# Range for the "妙手榜": below this we're in noise; above it we're in
+# horizon-effect territory where the depth-22 PV almost certainly mis-evaluated
+# the position rather than the human finding a genuine engine-beating move.
+BRILLIANT_MIN = 50
+BRILLIANT_MAX = 300
+
+
+def _compute_brilliants(game: dict, shallow: dict, deep: dict,
+                        very_deep: dict | None = None) -> list:
+    """Inverse of the trap rule: plies where the mover's choice came out
+    better than the engine's depth-22 best at that position (i.e. mover gain).
+    Clamped to BRILLIANT_MIN..BRILLIANT_MAX so we keep the credible band and
+    filter horizon-effect noise."""
+    out = []
+    seen = set()
+    for vi, plies in enumerate(game['variations']):
+        for pi in range(SKIP_OPENING_PLIES, len(plies) - 1):
+            d_loss = _ply_loss(plies, pi, deep)
+            if d_loss is None:
+                continue
+            gain = -d_loss
+            if gain < BRILLIANT_MIN or gain > BRILLIANT_MAX:
+                continue
+            s_loss = _ply_loss(plies, pi, shallow)
+            vd_loss = _ply_loss(plies, pi, very_deep) if very_deep else None
+            p = plies[pi]
+            fen = p.get('fen')
+            if fen in seen:
+                continue
+            seen.add(fen)
+            out.append({
+                'vi': vi, 'pi': pi,
+                'fen': fen,
+                'side': p.get('side'),
+                'iccs': p.get('iccs'),
+                'chinese': p.get('chinese'),
+                'annote': (p.get('annote') or '').strip(),
+                'gain': gain,
+                'shallow_delta': (-s_loss) if s_loss is not None else None,
+                'very_deep_gain': (-vd_loss) if vd_loss is not None else None,
+            })
+    # Sort earliest-ply first so each file reads top-to-bottom in playing order.
+    out.sort(key=lambda b: (b['vi'], b['pi']))
+    return out
+
+
 def compute_game_stats(game: dict, shallow: dict, deep: dict,
                        chessdb: dict | None = None,
                        very_deep: dict | None = None) -> dict:
@@ -536,10 +620,13 @@ def compute_game_stats(game: dict, shallow: dict, deep: dict,
         unique_traps.append(t)
 
     n_fens = len(fens_in_game)
+    brilliants = _compute_brilliants(game, shallow, deep, very_deep)
     return {
         'unique_plies': _count_tree_plies(game.get('tree')),
         'traps': unique_traps,
         'trap_count': len(unique_traps),
+        'brilliants': brilliants,
+        'brilliant_count': len(brilliants),
         'decisive_count': decisive,
         'deep_coverage': (len(fens_with_deep) / n_fens) if n_fens else 0.0,
         'n_fens': n_fens,
@@ -643,12 +730,107 @@ def render_traps_page(games: list, stats_by_file: dict, chessdb: dict | None = N
     return TRAPS_HTML.format(n_traps=n_total, sections=body)
 
 
+def render_brilliants_page(games: list, stats_by_file: dict) -> str:
+    """「妙手榜」— mirror of render_traps_page but for credible mover-gains
+    (BRILLIANT_MIN..BRILLIANT_MAX cp).
+
+    Same folder → file → table layout, only the column semantics flip:
+    here positive numbers mean the mover *gained* cp vs the engine's
+    depth-22 best estimate. Outside the credible band most candidates
+    are horizon-effect artefacts, so we cap at BRILLIANT_MAX.
+    """
+    by_folder: dict[str, list[tuple[str, list]]] = {}
+    for g in games:
+        items = stats_by_file.get(g['file'], {}).get('brilliants') or []
+        if not items:
+            continue
+        folder = _group_key(g.get('rel_path', g['file']))
+        by_folder.setdefault(folder, []).append((g['file'], items))
+
+    folder_keys = sorted(by_folder.keys(), key=lambda k: (k != '主目錄', k))
+
+    sections_html = []
+    for folder in folder_keys:
+        files_in_folder = sorted(by_folder[folder], key=lambda x: display_title(x[0]))
+        folder_total = sum(len(items) for _, items in files_in_folder)
+        folder_id = _folder_anchor(folder)
+
+        file_blocks = []
+        for file, items in files_in_folder:
+            slug = ascii_slug(file)
+            title = display_title(file)
+            file_id = _file_anchor(file)
+            rows = []
+            for b in items:
+                side_label = '紅' if b['side'] == 'red' else '黑'
+                annote_cell = (escape_html(b['annote'][:40])
+                               if b['annote'] else '<span class="dim">—</span>')
+                href = f'games/{slug}.html?v={b["vi"]}&p={b["pi"]}'
+                # Shallow delta: positive = shallow already saw the gain;
+                # negative or near-zero = shallow missed it (the interesting case).
+                if b['shallow_delta'] is not None:
+                    s_cell = f'<td class="loss shallow">{b["shallow_delta"]:+d}</td>'
+                else:
+                    s_cell = '<td class="loss shallow"><span class="dim">—</span></td>'
+                # depth-28 verification (very_deep_gain).
+                if b['very_deep_gain'] is not None:
+                    vg = b['very_deep_gain']
+                    if vg >= BRILLIANT_MIN:
+                        vd_cls = 'confirm'
+                    elif vg > 0:
+                        vd_cls = 'mild'
+                    else:
+                        vd_cls = 'reject'  # depth-28 retracts the gain
+                    vd_cell = f'<td class="gain vdeep {vd_cls}">{vg:+d}</td>'
+                else:
+                    vd_cell = '<td class="gain vdeep"><span class="dim">—</span></td>'
+                rows.append(
+                    f'<tr>'
+                    f'<td class="vp"><a href="{href}">v{b["vi"] + 1}·第{b["pi"] + 1}步</a></td>'
+                    f'<td class="side {b["side"]}">{side_label}</td>'
+                    f'<td class="move">{escape_html(b["chinese"])} '
+                    f'<code>{b["iccs"]}</code></td>'
+                    f'<td class="gain deep">+{b["gain"]}</td>'
+                    f'{s_cell}'
+                    f'{vd_cell}'
+                    f'<td class="annote">{annote_cell}</td>'
+                    f'</tr>'
+                )
+            file_blocks.append(
+                f'<section class="file-block" id="{file_id}">'
+                f'<h3 class="file-head">'
+                f'<a class="file-link" href="games/{slug}.html">{escape_html(title)}</a>'
+                f'<span class="file-count">{len(items)} 筆</span>'
+                f'</h3>'
+                f'<table class="traps-table"><tbody>{"".join(rows)}</tbody></table>'
+                f'</section>'
+            )
+
+        sections_html.append(
+            f'<section class="folder-block" id="{folder_id}">'
+            f'<h2 class="folder-head">{escape_html(folder)} '
+            f'<span class="folder-count">{folder_total} 筆 · {len(files_in_folder)} 檔</span></h2>'
+            f'{"".join(file_blocks)}'
+            f'</section>'
+        )
+
+    n_total = sum(s['brilliant_count'] for s in stats_by_file.values())
+    body = '\n'.join(sections_html) if sections_html else '<p class="empty">尚無妙手候選</p>'
+    return BRILLIANTS_HTML.format(
+        n_total=n_total,
+        gain_min=BRILLIANT_MIN,
+        gain_max=BRILLIANT_MAX,
+        sections=body,
+    )
+
+
 def escape_html(s: str) -> str:
     return (str(s).replace('&', '&amp;').replace('<', '&lt;')
             .replace('>', '&gt;').replace('"', '&quot;'))
 
 
-def render_index(games: list, n_positions: int, stats_by_file: dict, n_traps: int) -> str:
+def render_index(games: list, n_positions: int, stats_by_file: dict,
+                 n_traps: int, n_brilliants: int) -> str:
     groups = {}
     for g in games:
         key = _group_key(g.get('rel_path', g['file']))
@@ -660,10 +842,14 @@ def render_index(games: list, n_positions: int, stats_by_file: dict, n_traps: in
     sections = []
     for key in sorted_keys:
         members = sorted(groups[key], key=lambda x: x['file'])
-        # Folder-level trap total; rendered next to the <h2> so master can jump
-        # to traps.html#<folder> for "all the chest-thumping in this folder".
+        # Folder-level trap + brilliant totals; rendered next to the <h2> so
+        # master can jump straight into traps/brilliants pre-filtered to this
+        # folder via the section anchor.
         folder_trap_total = sum(
             (stats_by_file.get(g['file']) or {}).get('trap_count', 0) for g in members
+        )
+        folder_brilliant_total = sum(
+            (stats_by_file.get(g['file']) or {}).get('brilliant_count', 0) for g in members
         )
         items = []
         for g in members:
@@ -696,14 +882,21 @@ def render_index(games: list, n_positions: int, stats_by_file: dict, n_traps: in
                 f'{badge_html}</li>'
             )
 
+        folder_id = _folder_anchor(key)
         folder_badge = ''
         if folder_trap_total:
-            folder_id = _folder_anchor(key)
-            folder_badge = (
+            folder_badge += (
                 f' <a class="badge badge-trap folder-trap-link" '
                 f'href="traps.html#{folder_id}" '
                 f'title="跳到全站陷阱頁的此目錄區段">'
                 f'⚠ {folder_trap_total}</a>'
+            )
+        if folder_brilliant_total:
+            folder_badge += (
+                f' <a class="badge badge-brilliant folder-trap-link" '
+                f'href="brilliants.html#{folder_id}" '
+                f'title="跳到妙手榜的此目錄區段">'
+                f'✨ {folder_brilliant_total}</a>'
             )
         sections.append(
             f'<section class="category"><h2>{escape_html(key)} '
@@ -715,6 +908,7 @@ def render_index(games: list, n_positions: int, stats_by_file: dict, n_traps: in
         n_games=len(games),
         n_positions=n_positions,
         n_traps=n_traps,
+        n_brilliants=n_brilliants,
         items='\n'.join(sections),
     )
 
@@ -775,7 +969,8 @@ def main():
         for g in games
     }
     n_traps = sum(s['trap_count'] for s in stats_by_file.values())
-    print(f"[stats] {n_traps} unique traps across {len(games)} games", file=sys.stderr)
+    n_brilliants = sum(s['brilliant_count'] for s in stats_by_file.values())
+    print(f"[stats] {n_traps} traps + {n_brilliants} brilliants across {len(games)} games", file=sys.stderr)
 
     # Copy static assets
     for asset in ('style.css', 'board.js'):
@@ -795,14 +990,18 @@ def main():
 
     # Index + global trap list
     (OUT_DIR / "index.html").write_text(
-        render_index(games, enriched_count, stats_by_file, n_traps),
+        render_index(games, enriched_count, stats_by_file, n_traps, n_brilliants),
         encoding='utf-8',
     )
     (OUT_DIR / "traps.html").write_text(
         render_traps_page(games, stats_by_file, chessdb),
         encoding='utf-8',
     )
-    print(f"[write] index.html + traps.html", file=sys.stderr)
+    (OUT_DIR / "brilliants.html").write_text(
+        render_brilliants_page(games, stats_by_file),
+        encoding='utf-8',
+    )
+    print(f"[write] index.html + traps.html + brilliants.html", file=sys.stderr)
 
     # Mirror to /docs/ so GitHub Pages can serve it (Pages source dropdown only
     # lets you pick `/(root)` or `/docs`, not arbitrary subfolders).
