@@ -240,7 +240,6 @@ TRAPS_HTML = """<!DOCTYPE html>
   <span><span class="leg-label deep">深失</span><span class="leg-hint">depth-22 評定的失分（cp）— 越大越糟</span></span>
   <span><span class="leg-label shallow">淺失</span><span class="leg-hint">depth-12 對同一步的判斷（cp，&lt;50 = 淺算看不出來）</span></span>
   <span><span class="leg-label vdeep">深28失</span><span class="leg-hint">depth-28 驗證（&gt;100=確認陷阱、30-100=減弱、&lt;30=深算翻案；—=尚未跑）</span></span>
-  <span><span class="leg-label cdb">雲失</span><span class="leg-hint">雲庫最佳分 − 此走法分（cp，&gt;50=雲庫也認為差；無=雲庫沒此走法；—=雲庫無此局面）</span></span>
   <span><span class="leg-label">原註解</span><span class="leg-hint">XQF 內既有註解</span></span>
 </div>
 {sections}
@@ -597,21 +596,6 @@ def render_traps_page(games: list, stats_by_file: dict, chessdb: dict | None = N
                 annote_cell = (escape_html(t['annote'][:40])
                                if t['annote'] else '<span class="dim">—</span>')
                 href = f'games/{slug}.html?v={t["vi"]}&p={t["pi"]}'
-                # cdb_loss cross-check: positive = chessdb agrees this was worse
-                # than its top suggestion. None = chessdb has no data or played
-                # move isn't in its rated list.
-                if t.get('cdb_loss') is not None:
-                    cls = 'confirm' if t['cdb_loss'] > 50 else 'mild'
-                    cdb_cell = (
-                        f'<td class="loss cdb {cls}" '
-                        f'title="雲庫最佳 {t["cdb_best_score"]:+d}cp，'
-                        f'此走法 {t["cdb_played_score"]:+d}cp">'
-                        f'{t["cdb_loss"]:+d}</td>'
-                    )
-                elif chessdb and t['fen'] in chessdb:
-                    cdb_cell = '<td class="loss cdb" title="雲庫有此局面但無此走法評分"><span class="dim">無</span></td>'
-                else:
-                    cdb_cell = '<td class="loss cdb"><span class="dim">—</span></td>'
                 # depth-28 verification column (verify_traps.py).
                 if t.get('very_deep_loss') is not None:
                     vd = t['very_deep_loss']
@@ -633,7 +617,6 @@ def render_traps_page(games: list, stats_by_file: dict, chessdb: dict | None = N
                     f'<td class="loss deep">+{t["deep_loss"]}</td>'
                     f'<td class="loss shallow">{t["shallow_loss"]:+d}</td>'
                     f'{vd_cell}'
-                    f'{cdb_cell}'
                     f'<td class="annote">{annote_cell}</td>'
                     f'</tr>'
                 )
