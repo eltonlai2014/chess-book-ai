@@ -77,7 +77,7 @@ def is_valid_entry(entry, target_depth):
     return isinstance(bm, str) and len(bm) == 4
 
 
-def run_engine(depth, threads, hash_mb, checkpoint_every):
+def run_engine(depth, threads, hash_mb, checkpoint_every, deadline=None):
     games = json.loads((OUT_DIR / 'data' / 'games.json').read_text(encoding='utf-8'))
     shallow = load_positions(OUT_DIR / 'positions.js')
     deep = load_positions(OUT_DIR / 'positions_deep.js')
@@ -103,6 +103,13 @@ def run_engine(depth, threads, hash_mb, checkpoint_every):
     t0 = time.time()
     try:
         for i, fen in enumerate(todo, 1):
+            # Self-deadline: schtask /SC ONCE has no /ET, so we enforce the
+            # "stop by 10:00 next morning" rule here. Save current cache and
+            # exit cleanly instead of getting hard-killed by the OS.
+            if deadline and time.time() >= deadline:
+                print(f"[deadline] reached at FEN {i}/{len(todo)} — saving and exiting", flush=True)
+                save_very_deep(very_deep)
+                return very_deep
             ts = time.time()
             res = eng.go(fen, depth)
             dt = time.time() - ts
@@ -165,16 +172,24 @@ def main():
     ap.add_argument('--depth', type=int, default=28)
     ap.add_argument('--threads', type=int, default=4)
     ap.add_argument('--hash-mb', type=int, default=512)
-    ap.add_argument('--checkpoint-every', type=int, default=20)
+    ap.add_argument('--checkpoint-every', type=int, default=5)
+    ap.add_argument('--max-hours', type=float, default=None,
+                    help='If set, exit cleanly when this many hours have elapsed '
+                         '(used by the schtask wrapper to bound a one-shot run).')
     ap.add_argument('--no-post', action='store_true',
                     help='Skip the render+commit+push at the end (for manual reruns)')
     args = ap.parse_args()
 
     LOG.parent.mkdir(parents=True, exist_ok=True)
     print(f"=== verify_traps start {time.strftime('%Y-%m-%d %H:%M:%S')} ===", flush=True)
-    print(f"  depth={args.depth} threads={args.threads} hash={args.hash_mb}MB", flush=True)
+    deadline = (time.time() + args.max_hours * 3600) if args.max_hours else None
+    deadline_str = (time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(deadline))
+                    if deadline else 'none')
+    print(f"  depth={args.depth} threads={args.threads} hash={args.hash_mb}MB  "
+          f"checkpoint_every={args.checkpoint_every}  deadline={deadline_str}", flush=True)
     try:
-        run_engine(args.depth, args.threads, args.hash_mb, args.checkpoint_every)
+        run_engine(args.depth, args.threads, args.hash_mb,
+                   args.checkpoint_every, deadline=deadline)
     except KeyboardInterrupt:
         print("[interrupt] stopped — partial cache saved", flush=True)
         return
