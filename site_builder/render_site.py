@@ -200,7 +200,7 @@ INDEX_HTML = """<!DOCTYPE html>
 </head>
 <body>
 <header><h1>象棋書譜 × Pikafish 對照</h1>
-<p class="meta">共 {n_games} 個棋譜檔 · {n_positions} 個唯一局面已分析 · <a class="traps-link" href="traps.html">⚠ 全站陷阱 {n_traps}</a> · <a class="traps-link brilliants-link" href="brilliants.html">✨ 妙手榜 {n_brilliants}</a></p>
+<p class="meta">共 {n_games} 個棋譜檔 · {n_positions} 個唯一局面已分析 · <a class="traps-link" href="traps.html">⚠ 全站陷阱 {n_traps}</a> · <a class="traps-link brilliants-link" href="brilliants.html">✨ 妙手榜 {n_brilliants}</a>{broken_link}</p>
 <label class="theme-picker">主題
 <select id="themePicker" onchange="setTheme(this.value)">
 <option value="amber">琥珀 Amber</option>
@@ -327,6 +327,39 @@ BRILLIANTS_HTML = """<!DOCTYPE html>
   <span><span class="leg-label shallow">淺Δ</span><span class="leg-hint">depth-12 對同一步的判斷（cp，&lt;50 = 淺算看不出這是妙手）</span></span>
   <span><span class="leg-label vdeep">深28得</span><span class="leg-hint">depth-28 驗證（&gt;50=確認妙手、0-50=減弱、&lt;0=深算翻案；—=尚未跑）</span></span>
   <span><span class="leg-label">原註解</span><span class="leg-hint">XQF 內既有註解</span></span>
+</div>
+{sections}
+</main>
+</body>
+</html>
+"""
+
+BROKEN_ANNOTES_HTML = """<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>中文亂碼註解 — 象棋書譜 × Pikafish</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=IBM+Plex+Sans+TC:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+TC:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+<script>
+  (function() {{
+    var t = localStorage.getItem('chessbookTheme') || 'amber';
+    document.documentElement.dataset.theme = t;
+  }})();
+</script>
+</head>
+<body>
+<header><h1>✏ 中文亂碼註解</h1>
+<p class="meta"><a class="back" href="index.html">← 回到列表</a> · 共 {n_total} 筆需在演播室手動修正 · 點擊跳到對應局面</p>
+</header>
+<main class="traps-page">
+<div class="traps-legend">
+  <span class="leg-key">符號</span>
+  <span><span class="leg-label">␀</span><span class="leg-hint">NULL byte（最常見的亂碼來源）</span></span>
+  <span><span class="leg-label">↵</span><span class="leg-hint">原文換行（CR/LF）</span></span>
+  <span><span class="leg-label">變例·步</span><span class="leg-hint">點擊跳到該局面</span></span>
 </div>
 {sections}
 </main>
@@ -907,6 +940,74 @@ def escape_html(s: str) -> str:
             .replace('>', '&gt;').replace('"', '&quot;'))
 
 
+def _broken_annote_display(s: str) -> str:
+    """Same substitution as list_broken_annotes.display() — make control
+    chars visible inline."""
+    if not s:
+        return ''
+    return (s.replace('\x00', '␀')
+             .replace('\r\n', '↵')
+             .replace('\n', '↵')
+             .replace('\r', '↵')
+             .strip())
+
+
+def render_broken_annotes_page(games: list) -> str:
+    """Clickable version of broken_annotes.md. Each row deep-links into the
+    game page via ?v=&p= so master can jump straight to the position."""
+    src = OUT_DIR / 'data' / 'broken_annotes.json'
+    if not src.exists():
+        return ''
+    data = json.loads(src.read_text(encoding='utf-8'))
+    n_total = data.get('total', 0)
+
+    # filename → slug map so each row can link to its game page.
+    slug_by_file = {g['file']: ascii_slug(g['file']) for g in games}
+
+    sections = []
+    for f in data.get('files', []):
+        name = f.get('name', '')
+        file = f.get('file', '')
+        rows = f.get('rows', [])
+        slug = slug_by_file.get(file)
+        if not rows:
+            continue
+        # Header: file title (clickable to game page) + count.
+        title_cell = (
+            f'<a class="file-link" href="games/{slug}.html">{escape_html(name)}</a>'
+            if slug else escape_html(name)
+        )
+        body_rows = []
+        for r in rows:
+            # vi/pi in JSON are 1-indexed; subtract 1 for the URL params.
+            vi1, pi1 = r['vi'], r['pi']
+            side_label = '紅' if pi1 % 2 == 1 else '黑'
+            side_cls = 'red' if pi1 % 2 == 1 else 'black'
+            href = (f'games/{slug}.html?v={vi1 - 1}&p={pi1 - 1}'
+                    if slug else '#')
+            body_rows.append(
+                f'<tr class="trap-row">'
+                f'<td class="vp"><a href="{href}">v{vi1}·第{pi1}步</a></td>'
+                f'<td class="side {side_cls}">{side_label}</td>'
+                f'<td class="move">{escape_html(r["chinese"])} '
+                f'<code>{r["iccs"]}</code></td>'
+                f'<td class="annote">{escape_html(_broken_annote_display(r["annote"]))}</td>'
+                f'</tr>'
+            )
+        sections.append(
+            f'<section class="file-block">'
+            f'<h3 class="file-head">'
+            f'{title_cell}'
+            f'<span class="file-count">{len(rows)} 筆</span>'
+            f'</h3>'
+            f'<table class="traps-table"><tbody>{"".join(body_rows)}</tbody></table>'
+            f'</section>'
+        )
+
+    body = '\n'.join(sections) if sections else '<p class="empty">無亂碼</p>'
+    return BROKEN_ANNOTES_HTML.format(n_total=n_total, sections=body)
+
+
 def render_index(games: list, n_positions: int, stats_by_file: dict,
                  n_traps: int, n_brilliants: int) -> str:
     groups = {}
@@ -982,11 +1083,24 @@ def render_index(games: list, n_positions: int, stats_by_file: dict,
             f'<ul class="game-list">{"".join(items)}</ul></section>'
         )
 
+    # Only show the broken-annotes link if the JSON exists AND has rows.
+    broken_link = ''
+    bj = OUT_DIR / 'data' / 'broken_annotes.json'
+    if bj.exists():
+        try:
+            n_broken = json.loads(bj.read_text(encoding='utf-8')).get('total', 0)
+        except Exception:
+            n_broken = 0
+        if n_broken:
+            broken_link = (f' · <a class="traps-link" href="broken_annotes.html">'
+                           f'✏ 待修註解 {n_broken}</a>')
+
     return INDEX_HTML.format(
         n_games=len(games),
         n_positions=n_positions,
         n_traps=n_traps,
         n_brilliants=n_brilliants,
+        broken_link=broken_link,
         items='\n'.join(sections),
     )
 
@@ -1077,7 +1191,14 @@ def main():
         render_brilliants_page(games, stats_by_file),
         encoding='utf-8',
     )
-    print(f"[write] index.html + traps.html + brilliants.html", file=sys.stderr)
+    broken_html = render_broken_annotes_page(games)
+    if broken_html:
+        (OUT_DIR / "broken_annotes.html").write_text(broken_html, encoding='utf-8')
+        print(f"[write] index.html + traps.html + brilliants.html + broken_annotes.html",
+              file=sys.stderr)
+    else:
+        print(f"[write] index.html + traps.html + brilliants.html "
+              f"(broken_annotes.json missing — skipped)", file=sys.stderr)
 
     # Mirror to /docs/ so GitHub Pages can serve it (Pages source dropdown only
     # lets you pick `/(root)` or `/docs`, not arbitrary subfolders).

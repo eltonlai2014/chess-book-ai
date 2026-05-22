@@ -2,8 +2,12 @@
 control-char garbage. Each row gives variation + ply coordinates so the user
 can find the position in XQStudio (演播室) and rewrite the annote there.
 
-Output: output/broken_annotes.md
+Outputs:
+- output/broken_annotes.md            — text checklist (printable / git-diffable)
+- output/site/data/broken_annotes.json — feeds the broken_annotes.html page
+                                          rendered by render_site.py
 """
+import json
 import re
 import sys
 from pathlib import Path
@@ -89,6 +93,8 @@ def collect_broken(xqf_path):
 def main():
     out_md = REPO / "output" / "broken_annotes.md"
     out_md.parent.mkdir(exist_ok=True)
+    out_json = REPO / "output" / "site" / "data" / "broken_annotes.json"
+    out_json.parent.mkdir(parents=True, exist_ok=True)
     lines = [
         "# 需要在演播室手動修正的註解\n\n",
         "對應檔案 = `D:\\Elton\\TestArea\\chess-book\\AI\\` 下的版本（site 跑的是這一份）。\n",
@@ -98,6 +104,7 @@ def main():
     ]
 
     total = 0
+    json_files = []
     for name, ai_path in PAIRS:
         if not ai_path.exists():
             continue
@@ -107,18 +114,40 @@ def main():
         lines.append(f"路徑：`{ai_path}`\n\n")
         if not rows:
             lines.append("(無需修)\n")
-            continue
-        lines.append("| 變例 | 步 | 方 | 走法 | ICCS | 目前壞文字 |\n")
-        lines.append("|---|---|---|---|---|---|\n")
-        # side derived from ply parity (assuming red first)
-        for r in rows:
-            side = '紅' if r['pi'] % 2 == 1 else '黑'
-            lines.append(f"| v{r['vi']} | p{r['pi']} | {side} | {md_escape(r['chinese'])} "
-                         f"| `{r['iccs']}` | {display(r['annote'])} |\n")
+        else:
+            lines.append("| 變例 | 步 | 方 | 走法 | ICCS | 目前壞文字 |\n")
+            lines.append("|---|---|---|---|---|---|\n")
+            for r in rows:
+                side = '紅' if r['pi'] % 2 == 1 else '黑'
+                lines.append(f"| v{r['vi']} | p{r['pi']} | {side} | {md_escape(r['chinese'])} "
+                             f"| `{r['iccs']}` | {display(r['annote'])} |\n")
+        # JSON entry — render_site.py reads this to build broken_annotes.html.
+        # vi/pi here are 1-indexed (as written to the .md); render_site
+        # converts to 0-indexed for the ?v=&p= URL params.
+        json_files.append({
+            'name': name,
+            'file': ai_path.name,
+            'src_path': str(ai_path),
+            'rows': [
+                {
+                    'vi': r['vi'], 'pi': r['pi'],
+                    'iccs': r['iccs'], 'chinese': r['chinese'],
+                    'annote': r['annote'],
+                }
+                for r in rows
+            ],
+        })
 
     lines.insert(2, f"共 **{total}** 筆需修。\n\n")
     out_md.write_text(''.join(lines), encoding='utf-8')
-    print(f"[md] {total} broken annotes -> {out_md}")
+    print(f"[md]   {total} broken annotes -> {out_md}")
+
+    out_json.write_text(
+        json.dumps({'total': total, 'files': json_files},
+                   ensure_ascii=False, separators=(',', ':')),
+        encoding='utf-8',
+    )
+    print(f"[json] {out_json}")
 
 
 if __name__ == '__main__':
