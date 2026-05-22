@@ -431,6 +431,59 @@ main.traps-page {
   max-width: 1100px;
   margin: 0 auto;
 }
+/* Filter toggle on traps page — narrow the view to confirm / mild / reject /
+   pending. Implemented as `body[data-trap-filter="X"] tr.trap-row:not(.trap-X)
+   { display: none }` to keep the markup static and the JS minimal. */
+.traps-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+  background: var(--bg-card);
+  border: 1px solid var(--bg-soft);
+  border-radius: 4px;
+}
+.traps-filter .filter-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-faint);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding-right: var(--space-2);
+  border-right: 1px solid var(--bg-soft);
+  margin-right: var(--space-2);
+}
+.traps-filter .filter-btn {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  padding: 4px 10px;
+  border: 1px solid var(--bg-soft);
+  background: transparent;
+  color: var(--fg-dim);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--easing);
+}
+.traps-filter .filter-btn:hover {
+  border-color: var(--accent-soft);
+  color: var(--fg);
+}
+.traps-filter .filter-btn.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+body[data-trap-filter="confirm"] tr.trap-row:not(.trap-confirm),
+body[data-trap-filter="mild"]    tr.trap-row:not(.trap-mild),
+body[data-trap-filter="reject"]  tr.trap-row:not(.trap-reject),
+body[data-trap-filter="pending"] tr.trap-row:not(.trap-pending) {
+  display: none;
+}
+
 /* Column legend — explains the unlabeled table columns so the user doesn't
    have to guess what "深失/淺失" mean. Stays visible at top of page; the
    wrap-at-narrow-screens behavior is intentional (label + hint pairs cluster). */
@@ -797,6 +850,20 @@ header.game-header .meta {
   background: var(--accent);
   color: var(--bg);
   border-color: var(--accent);
+}
+
+/* depth-28 demo button — only enabled on trap FENs that verify_traps reached.
+   Use accent-bright + bold weight so it visually outranks the depth-22 button. */
+.control-bar button.demo-play.demo-vdeep {
+  border-color: var(--accent-bright);
+  color: var(--accent-bright);
+  font-weight: 600;
+}
+.control-bar button.demo-play.demo-vdeep::before { background: var(--accent-bright); }
+.control-bar button.demo-play.demo-vdeep:hover:not(:disabled) {
+  background: var(--accent-bright);
+  color: var(--bg);
+  border-color: var(--accent-bright);
 }
 
 .control-bar button.demo-play.stop {

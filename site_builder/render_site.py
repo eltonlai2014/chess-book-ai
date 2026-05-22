@@ -77,7 +77,9 @@ def _iccs_to_chinese(fen: str, iccs: str) -> str:
         return iccs
 
 
-def enrich_positions(positions: dict, deep: dict | None = None, chessdb: dict | None = None) -> dict:
+def enrich_positions(positions: dict, deep: dict | None = None,
+                     chessdb: dict | None = None,
+                     very_deep: dict | None = None) -> dict:
     """Per-position: add `best_chinese`, `pv_detail`, and optional deep-eval +
     chessdb cloud-database fields.
 
@@ -91,6 +93,7 @@ def enrich_positions(positions: dict, deep: dict | None = None, chessdb: dict | 
     """
     deep = deep or {}
     chessdb = chessdb or {}
+    very_deep = very_deep or {}
     enriched = {}
     for fen, entry in positions.items():
         e = dict(entry)
@@ -140,9 +143,22 @@ def enrich_positions(positions: dict, deep: dict | None = None, chessdb: dict | 
                 pass
             return out
 
+        vd = very_deep.get(fen)
+        if vd:
+            e['very_deep_score'] = vd.get('score')
+            e['very_deep_mate'] = vd.get('mate')
+            e['very_deep_best_iccs'] = vd.get('best_iccs')
+            e['very_deep_best_chinese'] = (
+                _iccs_to_chinese(fen, vd.get('best_iccs'))
+                if vd.get('best_iccs') else None
+            )
+            e['very_deep_depth'] = vd.get('depth')
+
         e['pv_detail'] = _build_pv_detail(e.get('pv'))
         if d:
             e['deep_pv_detail'] = _build_pv_detail(d.get('pv'))
+        if vd:
+            e['very_deep_pv_detail'] = _build_pv_detail(vd.get('pv'))
         enriched[fen] = e
     return enriched
 
@@ -229,9 +245,17 @@ TRAPS_HTML = """<!DOCTYPE html>
 </head>
 <body>
 <header><h1>⚠ 全站陷阱列表</h1>
-<p class="meta"><a class="back" href="index.html">← 回到列表</a> · 共 {n_traps} 個陷阱（淺算 &lt;50cp，深算 &gt;100cp，第 16 步起）</p>
+<p class="meta"><a class="back" href="index.html">← 回到列表</a> · 共 {n_traps} 個候選（{verdict_breakdown}）·  淺算 &lt;50cp，深算 &gt;100cp，第 16 步起</p>
 </header>
 <main class="traps-page">
+<div class="traps-filter" role="tablist">
+  <span class="filter-label">篩選</span>
+  <button class="filter-btn active" data-filter="all">顯示全部</button>
+  <button class="filter-btn" data-filter="confirm">只 ✓ confirm（depth-28 確認）</button>
+  <button class="filter-btn" data-filter="mild">△ mild（減弱）</button>
+  <button class="filter-btn" data-filter="reject">✗ reject（depth-28 翻案）</button>
+  <button class="filter-btn" data-filter="pending">? 未驗證</button>
+</div>
 <div class="traps-legend">
   <span class="leg-key">欄位</span>
   <span><span class="leg-label">變例·步</span><span class="leg-hint">v / 步序，點擊跳到局面</span></span>
@@ -243,6 +267,31 @@ TRAPS_HTML = """<!DOCTYPE html>
   <span><span class="leg-label">原註解</span><span class="leg-hint">XQF 內既有註解</span></span>
 </div>
 {sections}
+<script>
+(function () {{
+  const root = document.body;
+  document.querySelectorAll('.traps-filter .filter-btn').forEach((b) => {{
+    b.addEventListener('click', () => {{
+      const f = b.dataset.filter;
+      root.dataset.trapFilter = f;
+      document.querySelectorAll('.traps-filter .filter-btn').forEach((x) =>
+        x.classList.toggle('active', x === b));
+      // After filtering, hide file-blocks whose visible rows count == 0,
+      // and hide folder-blocks whose visible file-blocks count == 0.
+      document.querySelectorAll('.file-block').forEach((blk) => {{
+        const anyVisible = Array.from(blk.querySelectorAll('tr.trap-row'))
+          .some((tr) => getComputedStyle(tr).display !== 'none');
+        blk.style.display = anyVisible ? '' : 'none';
+      }});
+      document.querySelectorAll('.folder-block').forEach((blk) => {{
+        const anyVisible = Array.from(blk.querySelectorAll('.file-block'))
+          .some((fb) => fb.style.display !== 'none');
+        blk.style.display = anyVisible ? '' : 'none';
+      }});
+    }});
+  }});
+}})();
+</script>
 </main>
 </body>
 </html>
@@ -342,6 +391,7 @@ GAME_HTML = """<!DOCTYPE html>
 <button class="nav-last" title="跳到末步">▶|</button>
 <button class="demo-play" id="demoBtnShallow" data-mode="shallow" title="播放 depth-12 引擎主變">▶ 演示 淺12</button>
 <button class="demo-play demo-deep" id="demoBtnDeep" data-mode="deep" title="播放 depth-22 引擎主變（只有深算過的局面）">▶ 演示 深22</button>
+<button class="demo-play demo-vdeep" id="demoBtnVeryDeep" data-mode="verydeep" title="播放 depth-28 引擎主變（只有陷阱驗證過的局面）">▶ 演示 深28</button>
 <label class="redp"><input type="checkbox" id="redPerspective" checked> 紅方視角</label>
 </div>
 <div class="step-info" id="stepInfo">
@@ -666,6 +716,21 @@ def render_traps_page(games: list, stats_by_file: dict, chessdb: dict | None = N
     # Same ordering as the index page: 主目錄 first, then alphabetical.
     folder_keys = sorted(by_folder.keys(), key=lambda k: (k != '主目錄', k))
 
+    # depth-28 verdict classifies each trap into one of four buckets — drives
+    # both the per-row CSS class (for the filter toggle) and the breakdown
+    # counter in the header.
+    def _verdict(t):
+        vd = t.get('very_deep_loss')
+        if vd is None:
+            return 'pending'        # depth-28 not yet run for this FEN
+        if vd > 100:
+            return 'confirm'        # depth-28 still says trap
+        if vd > 30:
+            return 'mild'           # depth-28 reduces severity but keeps it
+        return 'reject'             # depth-28 翻案
+
+    verdict_totals = {'confirm': 0, 'mild': 0, 'reject': 0, 'pending': 0}
+
     sections_html = []
     for folder in folder_keys:
         files_in_folder = sorted(by_folder[folder], key=lambda x: display_title(x[0]))
@@ -679,24 +744,22 @@ def render_traps_page(games: list, stats_by_file: dict, chessdb: dict | None = N
             file_id = _file_anchor(file)
             rows = []
             for t in traps:
+                verdict = _verdict(t)
+                verdict_totals[verdict] += 1
                 side_label = '紅' if t['side'] == 'red' else '黑'
                 annote_cell = (escape_html(t['annote'][:40])
                                if t['annote'] else '<span class="dim">—</span>')
                 href = f'games/{slug}.html?v={t["vi"]}&p={t["pi"]}'
                 # depth-28 verification column (verify_traps.py).
                 if t.get('very_deep_loss') is not None:
-                    vd = t['very_deep_loss']
-                    if vd > 100:
-                        vd_cls = 'confirm'
-                    elif vd > 30:
-                        vd_cls = 'mild'
-                    else:
-                        vd_cls = 'reject'  # depth-28 says not actually a trap
-                    vd_cell = f'<td class="loss vdeep {vd_cls}">{vd:+d}</td>'
+                    vd_cell = (
+                        f'<td class="loss vdeep {verdict}">'
+                        f'{t["very_deep_loss"]:+d}</td>'
+                    )
                 else:
                     vd_cell = '<td class="loss vdeep"><span class="dim">—</span></td>'
                 rows.append(
-                    f'<tr>'
+                    f'<tr class="trap-row trap-{verdict}">'
                     f'<td class="vp"><a href="{href}">v{t["vi"] + 1}·第{t["pi"] + 1}步</a></td>'
                     f'<td class="side {t["side"]}">{side_label}</td>'
                     f'<td class="move">{escape_html(t["chinese"])} '
@@ -727,7 +790,22 @@ def render_traps_page(games: list, stats_by_file: dict, chessdb: dict | None = N
 
     n_total = sum(s['trap_count'] for s in stats_by_file.values())
     body = '\n'.join(sections_html) if sections_html else '<p class="empty">尚無陷阱</p>'
-    return TRAPS_HTML.format(n_traps=n_total, sections=body)
+
+    # Header breakdown — surfaces what depth-28 verification told us about the
+    # candidate set without forcing master to skim the colour-coded rows.
+    parts = [f'{verdict_totals["confirm"]} ✓']
+    if verdict_totals['mild']:
+        parts.append(f'{verdict_totals["mild"]} △')
+    parts.append(f'{verdict_totals["reject"]} ✗')
+    if verdict_totals['pending']:
+        parts.append(f'{verdict_totals["pending"]} ?')
+    verdict_breakdown = ' / '.join(parts)
+
+    return TRAPS_HTML.format(
+        n_traps=n_total,
+        verdict_breakdown=verdict_breakdown,
+        sections=body,
+    )
 
 
 def render_brilliants_page(games: list, stats_by_file: dict) -> str:
@@ -920,12 +998,10 @@ def _enrich_is_current() -> bool:
     view = OUT_DIR / "positions_view.js"
     if not view.exists():
         return False
-    # NOTE: positions_very_deep.js intentionally NOT here — it feeds the trap
-    # stats panel only; enrich_positions doesn't consume it, so a new very-deep
-    # cache doesn't invalidate positions_view.js.
     sources = [
         OUT_DIR / "positions.js",
         OUT_DIR / "positions_deep.js",
+        OUT_DIR / "positions_very_deep.js",
         DATA_DIR / "chessdb_cache.json",
     ]
     view_mtime = view.stat().st_mtime
@@ -957,7 +1033,7 @@ def main():
         enriched_count = len(positions)
     else:
         print("[enrich] computing Chinese notation + PV fen-after + deep + chessdb overlay", file=sys.stderr)
-        enriched = enrich_positions(positions, deep, chessdb)
+        enriched = enrich_positions(positions, deep, chessdb, very_deep)
         save_positions_view(view_path, enriched)
         enriched_count = len(enriched)
         print(f"[write] {view_path}", file=sys.stderr)

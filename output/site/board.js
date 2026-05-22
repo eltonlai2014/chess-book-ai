@@ -858,7 +858,7 @@ function drawChart(svg, plies, activePly) {
 // ---------- state ----------
 
 const STATE = { vi: 0, pi: -1, GAME: null, demoTimer: null, demoMode: null };
-let SVG_BOARD, SVG_CHART, STEP_INFO, ANNOTE_BOX, ALTS_BOX, NAV_STATUS, DEMO_BTN_S, DEMO_BTN_D, REDP_BOX, SELECT;
+let SVG_BOARD, SVG_CHART, STEP_INFO, ANNOTE_BOX, ALTS_BOX, NAV_STATUS, DEMO_BTN_S, DEMO_BTN_D, DEMO_BTN_VD, REDP_BOX, SELECT;
 
 // Move-tree lookups, built once at initGamePage time from GAME.tree + GAME.variations.
 // ALTS_BY_FEN: position-before-move -> list of alternative moves played from that
@@ -884,35 +884,43 @@ function setDemoMode(active, mode) {
   document.querySelectorAll(".control-bar .nav-first, .control-bar .nav-prev, .control-bar .nav-next, .control-bar .nav-last, #variation-select").forEach((b) => {
     b.disabled = active;
   });
+  const allBtns = [DEMO_BTN_S, DEMO_BTN_D, DEMO_BTN_VD];
   if (active) {
-    const activeBtn = mode === 'deep' ? DEMO_BTN_D : DEMO_BTN_S;
-    const otherBtn  = mode === 'deep' ? DEMO_BTN_S : DEMO_BTN_D;
+    const activeBtn = mode === 'verydeep' ? DEMO_BTN_VD
+                    : mode === 'deep'     ? DEMO_BTN_D
+                    : DEMO_BTN_S;
     activeBtn.textContent = "■ 停止演示";
     activeBtn.classList.add("stop");
     activeBtn.disabled = false;
-    otherBtn.disabled = true;
+    allBtns.filter((b) => b && b !== activeBtn).forEach((b) => b.disabled = true);
   } else {
     DEMO_BTN_S.textContent = "▶ 演示 淺12";
     DEMO_BTN_S.classList.remove("stop");
     DEMO_BTN_D.textContent = "▶ 演示 深22";
     DEMO_BTN_D.classList.remove("stop");
+    if (DEMO_BTN_VD) {
+      DEMO_BTN_VD.textContent = "▶ 演示 深28";
+      DEMO_BTN_VD.classList.remove("stop");
+    }
   }
 }
 
-// Enable/disable demo buttons based on whether the current ply has shallow/deep PV.
+// Enable/disable demo buttons based on whether the current ply has shallow/deep/very-deep PV.
 function updateDemoButtons() {
   if (STATE.demoTimer) return; // managed by setDemoMode during active demo
-  let shallowOk = false, deepOk = false;
+  let shallowOk = false, deepOk = false, vdeepOk = false;
   if (STATE.pi >= 0) {
     const ply = STATE.GAME.variations[STATE.vi][STATE.pi];
     const entry = getEntry(ply.fen);
     if (entry) {
       shallowOk = !!(entry.pv_detail && entry.pv_detail.length);
       deepOk    = !!(entry.deep_pv_detail && entry.deep_pv_detail.length);
+      vdeepOk   = !!(entry.very_deep_pv_detail && entry.very_deep_pv_detail.length);
     }
   }
   DEMO_BTN_S.disabled = !shallowOk;
   DEMO_BTN_D.disabled = !deepOk;
+  if (DEMO_BTN_VD) DEMO_BTN_VD.disabled = !vdeepOk;
 }
 
 function updateNavStatus() {
@@ -1274,12 +1282,16 @@ function startDemo(mode) {
   const ply = STATE.GAME.variations[STATE.vi][STATE.pi];
   const entry = getEntry(ply.fen);
   if (!entry) return;
-  const pv = mode === 'deep' ? entry.deep_pv_detail : entry.pv_detail;
+  const pv = mode === 'verydeep' ? entry.very_deep_pv_detail
+           : mode === 'deep'     ? entry.deep_pv_detail
+           : entry.pv_detail;
   if (!pv || !pv.length) return;
   STATE.demoMode = mode;
   setDemoMode(true, mode);
 
-  const depthLabel = mode === 'deep' ? '深22' : '淺12';
+  const depthLabel = mode === 'verydeep' ? '深28'
+                   : mode === 'deep'     ? '深22'
+                   : '淺12';
   let idx = 0;
   // Engine PV is relative to the position BEFORE the book's played move
   // (ply.fen), not after — that's the position the engine analyzed. Seed
@@ -1331,6 +1343,7 @@ function initGamePage(GAME) {
   NAV_STATUS = document.getElementById("navStatus");
   DEMO_BTN_S = document.getElementById("demoBtnShallow");
   DEMO_BTN_D = document.getElementById("demoBtnDeep");
+  DEMO_BTN_VD = document.getElementById("demoBtnVeryDeep");
   REDP_BOX = document.getElementById("redPerspective");
   ALTS_BOX = document.getElementById("altsBox");
 
@@ -1377,6 +1390,7 @@ function initGamePage(GAME) {
   };
   DEMO_BTN_S.addEventListener("click", () => onDemoClick("shallow"));
   DEMO_BTN_D.addEventListener("click", () => onDemoClick("deep"));
+  if (DEMO_BTN_VD) DEMO_BTN_VD.addEventListener("click", () => onDemoClick("verydeep"));
   updateDemoButtons();
 
   // Row clicks (all variations — only visible ones reachable, but bind all)
