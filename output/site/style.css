@@ -484,6 +484,20 @@ body[data-trap-filter="pending"] tr.trap-row:not(.trap-pending) {
   display: none;
 }
 
+/* d28-only trap badge — distinguishes "d22 saw it" rows from
+   "only d28 saw it" rows. */
+.src-d28 {
+  display: inline-block;
+  margin-left: 0.4em;
+  padding: 0 0.4em;
+  border: 1px solid var(--accent-bright, #c47);
+  border-radius: 3px;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: var(--accent-bright, #c47);
+  vertical-align: 0.05em;
+}
+
 /* Column legend — explains the unlabeled table columns so the user doesn't
    have to guess what "深失/淺失" mean. Stays visible at top of page; the
    wrap-at-narrow-screens behavior is intentional (label + hint pairs cluster). */

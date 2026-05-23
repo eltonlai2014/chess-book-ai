@@ -245,7 +245,7 @@ TRAPS_HTML = """<!DOCTYPE html>
 </head>
 <body>
 <header><h1>⚠ 全站陷阱列表</h1>
-<p class="meta"><a class="back" href="index.html">← 回到列表</a> · 共 {n_traps} 個候選（{verdict_breakdown}）·  淺算 &lt;50cp，深算 &gt;100cp，第 16 步起</p>
+<p class="meta"><a class="back" href="index.html">← 回到列表</a> · 共 {n_traps} 個候選（{verdict_breakdown}）·  淺算 &lt;50cp，深算 &gt;100cp（d22 或 d28），第 16 步起；<span class="src-d28">隱</span>= d22 沒抓到、d28 才看出</p>
 </header>
 <main class="traps-page">
 <div class="traps-filter" role="tablist">
@@ -664,18 +664,31 @@ def compute_game_stats(game: dict, shallow: dict, deep: dict,
         if final is not None and abs(final) > 300:
             decisive += 1
         # walk plies looking for the "shallow-blind deep-blunder" pattern.
+        # Two detection rules — d22-trap and d28-trap. The d28 rule catches
+        # blunders that d22 itself missed (i.e. cases where d22 was the
+        # horizon victim, not just d12). Same dedupe by FEN downstream.
         for pi in range(SKIP_OPENING_PLIES, len(plies) - 1):
-            d_loss = _ply_loss(plies, pi, deep)
-            if d_loss is None or d_loss <= 100 or d_loss >= 2000:
-                continue
             s_loss = _ply_loss(plies, pi, shallow)
             if s_loss is None or s_loss >= 50:
                 continue
+            d_loss = _ply_loss(plies, pi, deep)
+            vd_loss = _ply_loss(plies, pi, very_deep) if very_deep else None
+
+            # Rule A: classic d22 trap.
+            d22_trap = (d_loss is not None and 100 < d_loss < 2000)
+            # Rule B: d28-only trap — d28 sees the blunder, d22 didn't.
+            # Requires BOTH fen_before and fen_after at d28 (vd_loss not None)
+            # AND the d22 rule did NOT already fire on this pi.
+            d28_trap = (not d22_trap
+                        and vd_loss is not None and 100 < vd_loss < 2000)
+
+            if not (d22_trap or d28_trap):
+                continue
+
             p = plies[pi]
             iccs = p.get('iccs')
             fen = p.get('fen')
             cdb_view = _cdb_loss_for_played(fen, iccs, chessdb or {})
-            vd_loss = _ply_loss(plies, pi, very_deep) if very_deep else None
             traps.append({
                 'vi': vi, 'pi': pi,
                 'fen': fen,
@@ -686,6 +699,7 @@ def compute_game_stats(game: dict, shallow: dict, deep: dict,
                 'shallow_loss': s_loss,
                 'deep_loss': d_loss,
                 'very_deep_loss': vd_loss,
+                'source': 'd22' if d22_trap else 'd28',
                 'cdb_loss': cdb_view['cdb_loss'] if cdb_view else None,
                 'cdb_best_score': cdb_view['cdb_best_score'] if cdb_view else None,
                 'cdb_played_score': cdb_view['cdb_played_score'] if cdb_view else None,
@@ -791,13 +805,22 @@ def render_traps_page(games: list, stats_by_file: dict, chessdb: dict | None = N
                     )
                 else:
                     vd_cell = '<td class="loss vdeep"><span class="dim">—</span></td>'
+                # d22 might say nothing or even +/-X — show whatever it
+                # has, "—" if absent. Only d28-source rows hit the absent path.
+                if t.get('deep_loss') is None:
+                    deep_cell = '<td class="loss deep"><span class="dim">—</span></td>'
+                else:
+                    deep_cell = f'<td class="loss deep">{t["deep_loss"]:+d}</td>'
+                src = t.get('source', 'd22')
+                src_badge = (' <span class="src-d28" title="d22 沒抓到，d28 才看出的隱形陷阱">隱</span>'
+                             if src == 'd28' else '')
                 rows.append(
-                    f'<tr class="trap-row trap-{verdict}">'
-                    f'<td class="vp"><a href="{href}">v{t["vi"] + 1}·第{t["pi"] + 1}步</a></td>'
+                    f'<tr class="trap-row trap-{verdict} src-{src}">'
+                    f'<td class="vp"><a href="{href}">v{t["vi"] + 1}·第{t["pi"] + 1}步</a>{src_badge}</td>'
                     f'<td class="side {t["side"]}">{side_label}</td>'
                     f'<td class="move">{escape_html(t["chinese"])} '
                     f'<code>{t["iccs"]}</code></td>'
-                    f'<td class="loss deep">+{t["deep_loss"]}</td>'
+                    f'{deep_cell}'
                     f'<td class="loss shallow">{t["shallow_loss"]:+d}</td>'
                     f'{vd_cell}'
                     f'<td class="annote">{annote_cell}</td>'
