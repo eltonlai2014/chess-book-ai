@@ -1,9 +1,13 @@
-"""Full depth-28 sweep of every ply-≥15 FEN in the two 順包 books that isn't
+"""Full depth-28 sweep of every ply-≥15 FEN in the targeted books that isn't
 already at depth 28. Extends positions_very_deep.js so new traps surface
 in traps.html automatically (no UI change needed).
 
 Resumable, checkpoints every 5 FENs, --max-hours self-deadline for nightly
 schtask runs. Designed to be invoked daily 22:30 → 07:30 until done.
+
+Targets: edit TARGET_REL_KEYWORDS below. Resume-safe across target list
+changes — already-evaluated FENs are skipped, so adding a new book just
+appends its FENs to the work queue.
 """
 import argparse
 import json
@@ -21,7 +25,7 @@ EXE = REPO / "engine" / "Windows" / "pikafish-avx2.exe"
 OUT_DIR = REPO / "output" / "site"
 VERY_DEEP_JS = OUT_DIR / "positions_very_deep.js"
 
-TARGET_REL_KEYWORDS = ('順包直車3兵對橫車邊馬', '順包兩頭蛇對雙橫車')
+TARGET_REL_KEYWORDS = ('順包直車3兵對橫車邊馬', '順包兩頭蛇對雙橫車', '牛頭滾')
 SKIP_OPENING_PLIES = 15  # mirror enrich_decisive / verify_traps / render_site
 
 
