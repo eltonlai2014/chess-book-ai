@@ -830,6 +830,20 @@ header.game-header .meta {
   min-width: 36px;
 }
 
+/* "Jump to nearest branch" button — same chassis as demo buttons but with
+   the branch glyph (⑂) baked into the label. Visual rank below demo but
+   above the basic nav arrows. */
+.control-bar .nav-branch {
+  padding: 5px 12px;
+  border-color: var(--accent-bright, var(--accent));
+  color: var(--accent-bright, var(--accent));
+  background: var(--bg);
+}
+.control-bar .nav-branch:hover:not(:disabled) {
+  background: var(--accent-bright, var(--accent));
+  color: var(--bg);
+}
+
 /* Demo buttons — pill toggles with subtle accent stripe */
 .control-bar button.demo-play {
   position: relative;

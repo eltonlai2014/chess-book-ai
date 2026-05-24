@@ -858,7 +858,7 @@ function drawChart(svg, plies, activePly) {
 // ---------- state ----------
 
 const STATE = { vi: 0, pi: -1, GAME: null, demoTimer: null, demoMode: null };
-let SVG_BOARD, SVG_CHART, STEP_INFO, ANNOTE_BOX, ALTS_BOX, NAV_STATUS, DEMO_BTN_S, DEMO_BTN_D, DEMO_BTN_VD, REDP_BOX, SELECT;
+let SVG_BOARD, SVG_CHART, STEP_INFO, ANNOTE_BOX, ALTS_BOX, NAV_STATUS, DEMO_BTN_S, DEMO_BTN_D, DEMO_BTN_VD, BRANCH_BTN, REDP_BOX, SELECT;
 
 // Move-tree lookups, built once at initGamePage time from GAME.tree + GAME.variations.
 // ALTS_BY_FEN: position-before-move -> list of alternative moves played from that
@@ -881,7 +881,7 @@ function stopDemo() {
 }
 
 function setDemoMode(active, mode) {
-  document.querySelectorAll(".control-bar .nav-first, .control-bar .nav-prev, .control-bar .nav-next, .control-bar .nav-last, #variation-select").forEach((b) => {
+  document.querySelectorAll(".control-bar .nav-first, .control-bar .nav-prev, .control-bar .nav-next, .control-bar .nav-last, .control-bar .nav-branch, #variation-select").forEach((b) => {
     b.disabled = active;
   });
   const allBtns = [DEMO_BTN_S, DEMO_BTN_D, DEMO_BTN_VD];
@@ -921,6 +921,47 @@ function updateDemoButtons() {
   DEMO_BTN_S.disabled = !shallowOk;
   DEMO_BTN_D.disabled = !deepOk;
   if (DEMO_BTN_VD) DEMO_BTN_VD.disabled = !vdeepOk;
+  updateBranchButton();
+}
+
+// Walk backwards from the current ply looking for the most recent position
+// where the current variation could have branched off. Returns [fen, iccs]
+// to feed navigateToAlternative, or null if no branch exists on this prefix.
+function findNearestBranch() {
+  if (!STATE.GAME) return null;
+  const plies = STATE.GAME.variations[STATE.vi];
+  // Search from the current ply backwards. Each ply's `fen` is the position
+  // BEFORE its move — that's the place an alternative could fork off.
+  const from = STATE.pi >= 0 ? STATE.pi : plies.length - 1;
+  for (let pi = from; pi >= 0; pi--) {
+    const ply = plies[pi];
+    const alts = ALTS_BY_FEN[ply.fen] || [];
+    for (const a of alts) {
+      if (a.iccs !== ply.iccs && (a.fen || ply.fen) in MOVE_LOOKUP === false) {
+        // alt has no lookup target (shouldn't happen, but skip if so)
+      }
+      if (a.iccs !== ply.iccs) {
+        const key = ply.fen + '|' + a.iccs;
+        if (MOVE_LOOKUP[key]) return { fen: ply.fen, iccs: a.iccs };
+      }
+    }
+  }
+  // Fall back to the init position itself — a different first move opens an
+  // entirely separate variation tree.
+  if (plies.length > 0) {
+    const firstIccs = plies[0].iccs;
+    for (const a of ALTS_BY_FEN[STATE.GAME.init_fen] || []) {
+      if (a.iccs !== firstIccs && MOVE_LOOKUP[STATE.GAME.init_fen + '|' + a.iccs]) {
+        return { fen: STATE.GAME.init_fen, iccs: a.iccs };
+      }
+    }
+  }
+  return null;
+}
+
+function updateBranchButton() {
+  if (!BRANCH_BTN) return;
+  BRANCH_BTN.disabled = (findNearestBranch() === null);
 }
 
 function updateNavStatus() {
@@ -1344,6 +1385,7 @@ function initGamePage(GAME) {
   DEMO_BTN_S = document.getElementById("demoBtnShallow");
   DEMO_BTN_D = document.getElementById("demoBtnDeep");
   DEMO_BTN_VD = document.getElementById("demoBtnVeryDeep");
+  BRANCH_BTN = document.getElementById("navBranchBtn");
   REDP_BOX = document.getElementById("redPerspective");
   ALTS_BOX = document.getElementById("altsBox");
 
@@ -1391,6 +1433,10 @@ function initGamePage(GAME) {
   DEMO_BTN_S.addEventListener("click", () => onDemoClick("shallow"));
   DEMO_BTN_D.addEventListener("click", () => onDemoClick("deep"));
   if (DEMO_BTN_VD) DEMO_BTN_VD.addEventListener("click", () => onDemoClick("verydeep"));
+  if (BRANCH_BTN) BRANCH_BTN.addEventListener("click", () => {
+    const target = findNearestBranch();
+    if (target) navigateToAlternative(target.fen, target.iccs);
+  });
   updateDemoButtons();
 
   // Row clicks (all variations — only visible ones reachable, but bind all)
