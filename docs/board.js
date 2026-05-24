@@ -924,28 +924,43 @@ function updateDemoButtons() {
   updateBranchButton();
 }
 
-// Walk FORWARD from the current ply looking for the next position where
-// the current variation diverges from another. Returns {fen, iccs} to feed
-// navigateToAlternative, or null if no downstream branch exists.
+// Walk BACKWARD from the current ply looking for the WIDEST upstream
+// branching point. "Widest" = most distinct sibling moves at that position;
+// a 3-way fork (e.g. 馬三進四 / 仕六進五 / 炮五平四) is more meaningful
+// than the 2-way fork one ply later. Returns the first ≥3-way fork found
+// (early exit), otherwise the widest ≥2-way fork on the backward path.
 function findNearestBranch() {
   if (!STATE.GAME) return null;
   const plies = STATE.GAME.variations[STATE.vi];
   if (plies.length === 0) return null;
-  // Search from the current ply forward (include current, since the position
-  // before the current move may itself be a fork point). When no ply is
-  // active (pi=-1), start from the root.
-  const from = STATE.pi >= 0 ? STATE.pi : 0;
-  for (let pi = from; pi < plies.length; pi++) {
+  // When no ply is active (pi=-1), start from the LAST ply so the search
+  // covers the whole variation.
+  const from = STATE.pi >= 0 ? STATE.pi : plies.length - 1;
+  let best = null;
+  let bestWidth = 0;
+  for (let pi = from; pi >= 0; pi--) {
     const ply = plies[pi];
     const alts = ALTS_BY_FEN[ply.fen] || [];
+    if (alts.length <= 1) continue;
+    // Pick the first alt that differs from current variation's move AND
+    // has a known lookup target (so navigateToAlternative actually lands).
+    let sibling = null;
     for (const a of alts) {
-      if (a.iccs !== ply.iccs) {
-        const key = ply.fen + '|' + a.iccs;
-        if (MOVE_LOOKUP[key]) return { fen: ply.fen, iccs: a.iccs };
+      if (a.iccs !== ply.iccs && MOVE_LOOKUP[ply.fen + '|' + a.iccs]) {
+        sibling = a; break;
       }
     }
+    if (!sibling) continue;
+    const width = alts.length;
+    if (width > bestWidth) {
+      bestWidth = width;
+      best = { fen: ply.fen, iccs: sibling.iccs };
+      // Early exit on the first 3+-way fork — that's the main divergence
+      // and master doesn't want to walk past it to find something wider.
+      if (width >= 3) return best;
+    }
   }
-  return null;
+  return best;
 }
 
 function updateBranchButton() {
