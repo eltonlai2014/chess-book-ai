@@ -924,35 +924,24 @@ function updateDemoButtons() {
   updateBranchButton();
 }
 
-// Walk backwards from the current ply looking for the most recent position
-// where the current variation could have branched off. Returns [fen, iccs]
-// to feed navigateToAlternative, or null if no branch exists on this prefix.
+// Walk FORWARD from the current ply looking for the next position where
+// the current variation diverges from another. Returns {fen, iccs} to feed
+// navigateToAlternative, or null if no downstream branch exists.
 function findNearestBranch() {
   if (!STATE.GAME) return null;
   const plies = STATE.GAME.variations[STATE.vi];
-  // Search from the current ply backwards. Each ply's `fen` is the position
-  // BEFORE its move — that's the place an alternative could fork off.
-  const from = STATE.pi >= 0 ? STATE.pi : plies.length - 1;
-  for (let pi = from; pi >= 0; pi--) {
+  if (plies.length === 0) return null;
+  // Search from the current ply forward (include current, since the position
+  // before the current move may itself be a fork point). When no ply is
+  // active (pi=-1), start from the root.
+  const from = STATE.pi >= 0 ? STATE.pi : 0;
+  for (let pi = from; pi < plies.length; pi++) {
     const ply = plies[pi];
     const alts = ALTS_BY_FEN[ply.fen] || [];
     for (const a of alts) {
-      if (a.iccs !== ply.iccs && (a.fen || ply.fen) in MOVE_LOOKUP === false) {
-        // alt has no lookup target (shouldn't happen, but skip if so)
-      }
       if (a.iccs !== ply.iccs) {
         const key = ply.fen + '|' + a.iccs;
         if (MOVE_LOOKUP[key]) return { fen: ply.fen, iccs: a.iccs };
-      }
-    }
-  }
-  // Fall back to the init position itself — a different first move opens an
-  // entirely separate variation tree.
-  if (plies.length > 0) {
-    const firstIccs = plies[0].iccs;
-    for (const a of ALTS_BY_FEN[STATE.GAME.init_fen] || []) {
-      if (a.iccs !== firstIccs && MOVE_LOOKUP[STATE.GAME.init_fen + '|' + a.iccs]) {
-        return { fen: STATE.GAME.init_fen, iccs: a.iccs };
       }
     }
   }

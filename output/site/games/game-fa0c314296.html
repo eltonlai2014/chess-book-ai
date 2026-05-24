@@ -47,7 +47,8 @@
 </aside>
 <section class="game-panel">
 <div class="control-bar">
-<select id="variation-select"><option value="0">變例 1 (52 步)</option>
+<select id="variation-select"><optgroup label="第 11 步 · 馬三進四  (108 條)">
+<option value="0">變例 1 (52 步)</option>
 <option value="1">變例 2 (24 步)</option>
 <option value="2">變例 3 (21 步)</option>
 <option value="3">變例 4 (33 步)</option>
@@ -155,26 +156,8 @@
 <option value="105">變例 106 (25 步)</option>
 <option value="106">變例 107 (33 步)</option>
 <option value="107">變例 108 (29 步)</option>
-<option value="108">變例 109 (15 步)</option>
-<option value="109">變例 110 (19 步)</option>
-<option value="110">變例 111 (29 步)</option>
-<option value="111">變例 112 (25 步)</option>
-<option value="112">變例 113 (29 步)</option>
-<option value="113">變例 114 (29 步)</option>
-<option value="114">變例 115 (24 步)</option>
-<option value="115">變例 116 (26 步)</option>
-<option value="116">變例 117 (25 步)</option>
-<option value="117">變例 118 (31 步)</option>
-<option value="118">變例 119 (30 步)</option>
-<option value="119">變例 120 (72 步)</option>
-<option value="120">變例 121 (49 步)</option>
-<option value="121">變例 122 (48 步)</option>
-<option value="122">變例 123 (26 步)</option>
-<option value="123">變例 124 (49 步)</option>
-<option value="124">變例 125 (28 步)</option>
-<option value="125">變例 126 (21 步)</option>
-<option value="126">變例 127 (15 步)</option>
-<option value="127">變例 128 (17 步)</option>
+</optgroup>
+<optgroup label="第 11 步 · 炮五平四  (21 條)">
 <option value="128">變例 129 (19 步)</option>
 <option value="129">變例 130 (21 步)</option>
 <option value="130">變例 131 (37 步)</option>
@@ -195,8 +178,32 @@
 <option value="145">變例 146 (21 步)</option>
 <option value="146">變例 147 (27 步)</option>
 <option value="147">變例 148 (29 步)</option>
-<option value="148">變例 149 (20 步)</option></select>
+<option value="148">變例 149 (20 步)</option>
+</optgroup>
+<optgroup label="第 11 步 · 仕六進五  (20 條)">
+<option value="108">變例 109 (15 步)</option>
+<option value="109">變例 110 (19 步)</option>
+<option value="110">變例 111 (29 步)</option>
+<option value="111">變例 112 (25 步)</option>
+<option value="112">變例 113 (29 步)</option>
+<option value="113">變例 114 (29 步)</option>
+<option value="114">變例 115 (24 步)</option>
+<option value="115">變例 116 (26 步)</option>
+<option value="116">變例 117 (25 步)</option>
+<option value="117">變例 118 (31 步)</option>
+<option value="118">變例 119 (30 步)</option>
+<option value="119">變例 120 (72 步)</option>
+<option value="120">變例 121 (49 步)</option>
+<option value="121">變例 122 (48 步)</option>
+<option value="122">變例 123 (26 步)</option>
+<option value="123">變例 124 (49 步)</option>
+<option value="124">變例 125 (28 步)</option>
+<option value="125">變例 126 (21 步)</option>
+<option value="126">變例 127 (15 步)</option>
+<option value="127">變例 128 (17 步)</option>
+</optgroup></select>
 <button class="nav-first" title="跳到第一步">|◀</button>
+<button class="nav-branch" id="navBranchBtn" title="從目前位置往後尋找下一個分歧局面，跳到另一條變例的分支點">⑂ 跳分支</button>
 <button class="nav-prev" title="上一步">◀</button>
 <span class="nav-status" id="navStatus">第 0 / 0 步</span>
 <button class="nav-next" title="下一步">▶</button>
@@ -204,7 +211,6 @@
 <button class="demo-play" id="demoBtnShallow" data-mode="shallow" title="播放 depth-12 引擎主變">▶ 演示 淺12</button>
 <button class="demo-play demo-deep" id="demoBtnDeep" data-mode="deep" title="播放 depth-22 引擎主變（只有深算過的局面）">▶ 演示 深22</button>
 <button class="demo-play demo-vdeep" id="demoBtnVeryDeep" data-mode="verydeep" title="播放 depth-28 引擎主變（只有陷阱驗證過的局面）">▶ 演示 深28</button>
-<button class="nav-branch" id="navBranchBtn" title="從目前位置回看，跳到最接近的分歧局面（另一條變例的同一個分支點）">⑂ 跳分支</button>
 <label class="redp"><input type="checkbox" id="redPerspective" checked> 紅方視角</label>
 </div>
 <div class="step-info" id="stepInfo">

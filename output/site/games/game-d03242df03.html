@@ -47,7 +47,8 @@
 </aside>
 <section class="game-panel">
 <div class="control-bar">
-<select id="variation-select"><option value="0">變例 1 (33 步)</option>
+<select id="variation-select"><optgroup label="第 11 步 · 兵五進一  (29 條)">
+<option value="0">變例 1 (33 步)</option>
 <option value="1">變例 2 (28 步)</option>
 <option value="2">變例 3 (26 步)</option>
 <option value="3">變例 4 (26 步)</option>
@@ -76,12 +77,8 @@
 <option value="26">變例 27 (30 步)</option>
 <option value="27">變例 28 (26 步)</option>
 <option value="28">變例 29 (26 步)</option>
-<option value="29">變例 30 (40 步)</option>
-<option value="30">變例 31 (28 步)</option>
-<option value="31">變例 32 (34 步)</option>
-<option value="32">變例 33 (30 步)</option>
-<option value="33">變例 34 (32 步)</option>
-<option value="34">變例 35 (15 步)</option>
+</optgroup>
+<optgroup label="第 11 步 · 馬八進七  (11 條)">
 <option value="35">變例 36 (26 步)</option>
 <option value="36">變例 37 (82 步)</option>
 <option value="37">變例 38 (36 步)</option>
@@ -92,8 +89,18 @@
 <option value="42">變例 43 (28 步)</option>
 <option value="43">變例 44 (32 步)</option>
 <option value="44">變例 45 (60 步)</option>
-<option value="45">變例 46 (102 步)</option></select>
+<option value="45">變例 46 (102 步)</option>
+</optgroup>
+<optgroup label="第 11 步 · 兵三進一  (6 條)">
+<option value="29">變例 30 (40 步)</option>
+<option value="30">變例 31 (28 步)</option>
+<option value="31">變例 32 (34 步)</option>
+<option value="32">變例 33 (30 步)</option>
+<option value="33">變例 34 (32 步)</option>
+<option value="34">變例 35 (15 步)</option>
+</optgroup></select>
 <button class="nav-first" title="跳到第一步">|◀</button>
+<button class="nav-branch" id="navBranchBtn" title="從目前位置往後尋找下一個分歧局面，跳到另一條變例的分支點">⑂ 跳分支</button>
 <button class="nav-prev" title="上一步">◀</button>
 <span class="nav-status" id="navStatus">第 0 / 0 步</span>
 <button class="nav-next" title="下一步">▶</button>
@@ -101,7 +108,6 @@
 <button class="demo-play" id="demoBtnShallow" data-mode="shallow" title="播放 depth-12 引擎主變">▶ 演示 淺12</button>
 <button class="demo-play demo-deep" id="demoBtnDeep" data-mode="deep" title="播放 depth-22 引擎主變（只有深算過的局面）">▶ 演示 深22</button>
 <button class="demo-play demo-vdeep" id="demoBtnVeryDeep" data-mode="verydeep" title="播放 depth-28 引擎主變（只有陷阱驗證過的局面）">▶ 演示 深28</button>
-<button class="nav-branch" id="navBranchBtn" title="從目前位置回看，跳到最接近的分歧局面（另一條變例的同一個分支點）">⑂ 跳分支</button>
 <label class="redp"><input type="checkbox" id="redPerspective" checked> 紅方視角</label>
 </div>
 <div class="step-info" id="stepInfo">

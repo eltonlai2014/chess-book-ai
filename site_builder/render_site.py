@@ -418,6 +418,7 @@ GAME_HTML = """<!DOCTYPE html>
 <div class="control-bar">
 <select id="variation-select">{variation_options}</select>
 <button class="nav-first" title="跳到第一步">|◀</button>
+<button class="nav-branch" id="navBranchBtn" title="從目前位置往後尋找下一個分歧局面，跳到另一條變例的分支點">⑂ 跳分支</button>
 <button class="nav-prev" title="上一步">◀</button>
 <span class="nav-status" id="navStatus">第 0 / 0 步</span>
 <button class="nav-next" title="下一步">▶</button>
@@ -425,7 +426,6 @@ GAME_HTML = """<!DOCTYPE html>
 <button class="demo-play" id="demoBtnShallow" data-mode="shallow" title="播放 depth-12 引擎主變">▶ 演示 淺12</button>
 <button class="demo-play demo-deep" id="demoBtnDeep" data-mode="deep" title="播放 depth-22 引擎主變（只有深算過的局面）">▶ 演示 深22</button>
 <button class="demo-play demo-vdeep" id="demoBtnVeryDeep" data-mode="verydeep" title="播放 depth-28 引擎主變（只有陷阱驗證過的局面）">▶ 演示 深28</button>
-<button class="nav-branch" id="navBranchBtn" title="從目前位置回看，跳到最接近的分歧局面（另一條變例的同一個分支點）">⑂ 跳分支</button>
 <label class="redp"><input type="checkbox" id="redPerspective" checked> 紅方視角</label>
 </div>
 <div class="step-info" id="stepInfo">
@@ -492,17 +492,75 @@ def render_variation_table(vi: int, plies: list) -> str:
     )
 
 
+def _find_first_divergence(variations: list) -> dict | None:
+    """First ply (0-indexed) at which 2+ distinct iccs are played across
+    variations. Returns {pi, groups: {iccs: [vi,...]}, chinese: {iccs: str}}
+    or None if no such ply (single variation, or all variations identical)."""
+    if len(variations) <= 1:
+        return None
+    max_pi = max(len(v) for v in variations)
+    for pi in range(max_pi):
+        groups: dict[str, list[int]] = {}
+        for vi, plies in enumerate(variations):
+            if pi >= len(plies):
+                continue
+            iccs = plies[pi].get('iccs')
+            if iccs:
+                groups.setdefault(iccs, []).append(vi)
+        if len(groups) >= 2:
+            chinese = {iccs: variations[vis[0]][pi].get('chinese', iccs)
+                       for iccs, vis in groups.items()}
+            return {'pi': pi, 'groups': groups, 'chinese': chinese}
+    return None
+
+
 def render_game(game: dict) -> str:
     title = display_title(game['file'])
-    options = []
-    tables = []
-    for vi, plies in enumerate(game['variations']):
-        options.append(f'<option value="{vi}">變例 {vi + 1} ({len(plies)} 步)</option>')
-        tables.append(render_variation_table(vi, plies))
+    variations = game['variations']
+    tables = [render_variation_table(vi, plies)
+              for vi, plies in enumerate(variations)]
+
+    # Group the variation dropdown by the move played at the first ply where
+    # variations diverge — turns a flat 149-item list into a few semantic
+    # buckets ("第11步: 馬三進四 / 仕六進五 / 砲五平四" etc).
+    div = _find_first_divergence(variations)
+    options: list[str] = []
+    if div:
+        # Order groups by group size (largest first — main line gets top spot).
+        grouped_vis = set()
+        order = sorted(div['groups'].keys(),
+                       key=lambda k: (-len(div['groups'][k]), k))
+        for iccs in order:
+            vis = div['groups'][iccs]
+            label = f"第 {div['pi'] + 1} 步 · {div['chinese'].get(iccs, iccs)}  ({len(vis)} 條)"
+            options.append(f'<optgroup label="{escape_html(label)}">')
+            for vi in vis:
+                options.append(
+                    f'<option value="{vi}">變例 {vi + 1} ({len(variations[vi])} 步)</option>'
+                )
+                grouped_vis.add(vi)
+            options.append('</optgroup>')
+        # Variations that ended before the divergence ply land in "其他".
+        leftover = [vi for vi in range(len(variations)) if vi not in grouped_vis]
+        if leftover:
+            options.append(
+                f'<optgroup label="其他 ({len(leftover)} 條，未達分歧點)">'
+            )
+            for vi in leftover:
+                options.append(
+                    f'<option value="{vi}">變例 {vi + 1} ({len(variations[vi])} 步)</option>'
+                )
+            options.append('</optgroup>')
+    else:
+        for vi, plies in enumerate(variations):
+            options.append(
+                f'<option value="{vi}">變例 {vi + 1} ({len(plies)} 步)</option>'
+            )
+
     return GAME_HTML.format(
         title=title,
         result=game.get('result', '*'),
-        n_var=len(game['variations']),
+        n_var=len(variations),
         variation_options='\n'.join(options),
         variation_tables='\n'.join(tables),
         game_json=json.dumps(game, ensure_ascii=False),
