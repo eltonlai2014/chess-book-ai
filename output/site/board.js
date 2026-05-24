@@ -6,7 +6,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 
 const PIECE_CHAR = {
   K: "帥", A: "仕", B: "相", N: "傌", R: "俥", C: "炮", P: "兵",
-  k: "將", a: "士", b: "象", n: "馬", r: "車", c: "砲", p: "卒",
+  k: "將", a: "士", b: "象", n: "馬", r: "車", c: "包", p: "卒",
 };
 
 // ---------- generic helpers ----------
@@ -234,7 +234,7 @@ function deltaSignClass(v) {
 // Piece-character fonts. The `text=` URL parameter restricts the Google Fonts
 // subset to the 14 piece glyphs + 楚河漢界, keeping the load <10KB even for
 // huge fonts like Ma Shan Zheng.
-const PIECE_CHARS_SUBSET = "帥仕相傌俥炮兵將士象馬車砲卒楚河漢界";
+const PIECE_CHARS_SUBSET = "帥仕相傌俥炮兵將士象馬車包卒楚河漢界";
 
 // Piece-character font registry. Each entry is lazy-loaded via the `text=`
 // Google Fonts URL trick: only the 16 piece glyphs + 楚河漢界 ship, keeping
@@ -858,7 +858,83 @@ function drawChart(svg, plies, activePly) {
 // ---------- state ----------
 
 const STATE = { vi: 0, pi: -1, GAME: null, demoTimer: null, demoMode: null };
-let SVG_BOARD, SVG_CHART, STEP_INFO, ANNOTE_BOX, ALTS_BOX, NAV_STATUS, DEMO_BTN_S, DEMO_BTN_D, DEMO_BTN_VD, BRANCH_BTN, REDP_BOX, SELECT;
+let SVG_BOARD, SVG_CHART, STEP_INFO, ANNOTE_BOX, ALTS_BOX, NAV_STATUS, DEMO_BTN_S, DEMO_BTN_D, DEMO_BTN_VD, BRANCH_BTN, REDP_BOX;
+
+// Custom variation picker — replaces the native <select> so we can render
+// multi-level groups (HTML5 forbids nested <optgroup>). Trigger button +
+// hidden panel of nested <details>. State: STATE.vi is the source of truth;
+// this object only handles UI sync.
+const VAR_PICKER = {
+  root: null,
+  trigger: null,
+  panel: null,
+  currentLabel: null,
+  init() {
+    this.root = document.getElementById("varpicker");
+    if (!this.root) return;
+    this.trigger = document.getElementById("varpickerTrigger");
+    this.panel = document.getElementById("varpickerPanel");
+    this.currentLabel = document.getElementById("varpickerCurrent");
+    this.trigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.toggle();
+    });
+    this.panel.querySelectorAll(".varpicker-option").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const vi = parseInt(btn.dataset.vi, 10);
+        if (!Number.isNaN(vi)) selectVariation(vi);
+        this.close();
+      });
+    });
+    // Close panel when clicking outside.
+    document.addEventListener("click", (e) => {
+      if (!this.panel || this.panel.hidden) return;
+      if (this.root.contains(e.target)) return;
+      this.close();
+    });
+    // ESC closes panel.
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && this.panel && !this.panel.hidden) this.close();
+    });
+  },
+  open() {
+    if (!this.panel) return;
+    this.panel.hidden = false;
+    this.trigger.setAttribute("aria-expanded", "true");
+    this.root.classList.add("open");
+  },
+  close() {
+    if (!this.panel) return;
+    this.panel.hidden = true;
+    this.trigger.setAttribute("aria-expanded", "false");
+    this.root.classList.remove("open");
+  },
+  toggle() {
+    if (this.panel && this.panel.hidden) this.open(); else this.close();
+  },
+  setSelected(vi, plyCount) {
+    if (!this.currentLabel) return;
+    this.currentLabel.textContent = `變例 ${vi + 1} (${plyCount} 步)`;
+    this.panel.querySelectorAll(".varpicker-option").forEach((b) => {
+      b.classList.toggle("selected", parseInt(b.dataset.vi, 10) === vi);
+    });
+    // Auto-open every <details> ancestor of the selected option, so when
+    // master next pops the panel the highlighted item is already visible.
+    const selBtn = this.panel.querySelector(`.varpicker-option[data-vi="${vi}"]`);
+    if (selBtn) {
+      let p = selBtn.parentElement;
+      while (p && p !== this.panel) {
+        if (p.tagName === "DETAILS") p.open = true;
+        p = p.parentElement;
+      }
+    }
+  },
+  setDisabled(disabled) {
+    if (this.trigger) this.trigger.disabled = disabled;
+    if (disabled) this.close();
+  },
+};
 
 // Move-tree lookups, built once at initGamePage time from GAME.tree + GAME.variations.
 // ALTS_BY_FEN: position-before-move -> list of alternative moves played from that
@@ -881,9 +957,10 @@ function stopDemo() {
 }
 
 function setDemoMode(active, mode) {
-  document.querySelectorAll(".control-bar .nav-first, .control-bar .nav-prev, .control-bar .nav-next, .control-bar .nav-last, .control-bar .nav-branch, #variation-select").forEach((b) => {
+  document.querySelectorAll(".control-bar .nav-first, .control-bar .nav-prev, .control-bar .nav-next, .control-bar .nav-last, .control-bar .nav-branch").forEach((b) => {
     b.disabled = active;
   });
+  VAR_PICKER.setDisabled(active);
   const allBtns = [DEMO_BTN_S, DEMO_BTN_D, DEMO_BTN_VD];
   if (active) {
     const activeBtn = mode === 'verydeep' ? DEMO_BTN_VD
@@ -925,47 +1002,42 @@ function updateDemoButtons() {
 }
 
 // Walk BACKWARD from the current ply looking for the WIDEST upstream
-// branching point. "Widest" = most distinct sibling moves at that position;
-// a 3-way fork (e.g. 馬三進四 / 仕六進五 / 炮五平四) is more meaningful
-// than the 2-way fork one ply later. Returns the first ≥3-way fork found
-// (early exit), otherwise the widest ≥2-way fork on the backward path.
-function findNearestBranch() {
-  if (!STATE.GAME) return null;
+// branching point IN THE CURRENT VARIATION. "Widest" = most distinct
+// sibling moves at that position; a 3-way fork (e.g. 馬三進四 / 仕六進五 /
+// 炮五平四) is more meaningful than a 2-way fork one ply later. Returns
+// the pi within current variation; stays on the same variation so the
+// user just rewinds, not jumps to a sibling line.
+function findNearestBranchPly() {
+  if (!STATE.GAME) return -1;
   const plies = STATE.GAME.variations[STATE.vi];
-  if (plies.length === 0) return null;
-  // When no ply is active (pi=-1), start from the LAST ply so the search
-  // covers the whole variation.
-  const from = STATE.pi >= 0 ? STATE.pi : plies.length - 1;
-  let best = null;
+  if (plies.length === 0) return -1;
+  // Skip the current ply itself — pressing 跳分支 on a fork point should
+  // take you BACK to the previous fork, not flag the spot you're already
+  // staring at.
+  const from = STATE.pi >= 0 ? STATE.pi - 1 : plies.length - 2;
+  let bestPi = -1;
   let bestWidth = 0;
   for (let pi = from; pi >= 0; pi--) {
     const ply = plies[pi];
     const alts = ALTS_BY_FEN[ply.fen] || [];
     if (alts.length <= 1) continue;
-    // Pick the first alt that differs from current variation's move AND
-    // has a known lookup target (so navigateToAlternative actually lands).
-    let sibling = null;
-    for (const a of alts) {
-      if (a.iccs !== ply.iccs && MOVE_LOOKUP[ply.fen + '|' + a.iccs]) {
-        sibling = a; break;
-      }
-    }
-    if (!sibling) continue;
+    // Need at least one sibling iccs different from the current move.
+    if (!alts.some(a => a.iccs !== ply.iccs)) continue;
     const width = alts.length;
     if (width > bestWidth) {
       bestWidth = width;
-      best = { fen: ply.fen, iccs: sibling.iccs };
+      bestPi = pi;
       // Early exit on the first 3+-way fork — that's the main divergence
       // and master doesn't want to walk past it to find something wider.
-      if (width >= 3) return best;
+      if (width >= 3) return bestPi;
     }
   }
-  return best;
+  return bestPi;
 }
 
 function updateBranchButton() {
   if (!BRANCH_BTN) return;
-  BRANCH_BTN.disabled = (findNearestBranch() === null);
+  BRANCH_BTN.disabled = (findNearestBranchPly() < 0);
 }
 
 function updateNavStatus() {
@@ -1283,7 +1355,7 @@ function selectVariation(vi) {
     w.style.display = isCurrent ? "" : "none";
     if (isCurrent) w.scrollTop = 0;
   });
-  SELECT.value = String(vi);
+  VAR_PICKER.setSelected(vi, STATE.GAME.variations[vi].length);
   annotateTable(vi);
   drawBoard(SVG_BOARD, STATE.GAME.init_fen, null, null);
   drawChart(SVG_CHART, STATE.GAME.variations[vi], -1);
@@ -1401,13 +1473,11 @@ function initGamePage(GAME) {
   injectBoardPicker();
   // Initial alts panel: show first-move alternatives at the init position.
   renderAlts(GAME.init_fen, null);
-  SELECT = document.getElementById("variation-select");
+  VAR_PICKER.init();
 
   // Annotate every table once (the hidden ones too, so future variation switches don't need redoing).
   // We do this lazily per-variation in selectVariation; but for the initial visible one, do it now.
   for (let vi = 0; vi < GAME.variations.length; vi++) annotateTable(vi);
-
-  SELECT.addEventListener("change", () => selectVariation(parseInt(SELECT.value, 10)));
 
   document.querySelectorAll(".nav-first").forEach((b) => b.addEventListener("click", () => {
     activatePly(0);
@@ -1438,8 +1508,8 @@ function initGamePage(GAME) {
   DEMO_BTN_D.addEventListener("click", () => onDemoClick("deep"));
   if (DEMO_BTN_VD) DEMO_BTN_VD.addEventListener("click", () => onDemoClick("verydeep"));
   if (BRANCH_BTN) BRANCH_BTN.addEventListener("click", () => {
-    const target = findNearestBranch();
-    if (target) navigateToAlternative(target.fen, target.iccs);
+    const pi = findNearestBranchPly();
+    if (pi >= 0) activatePly(pi);
   });
   updateDemoButtons();
 

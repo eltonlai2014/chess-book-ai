@@ -57,8 +57,16 @@ _SIMP_TO_TRAD = str.maketrans({
 })
 
 
-def _to_trad(s: str | None) -> str | None:
-    return s.translate(_SIMP_TO_TRAD) if s else s
+def _to_trad(s: str | None, side: str | None = None) -> str | None:
+    """Simplified → Traditional, plus xiangqi-side spelling: black cannons
+    are written 包 (current/historical 黑包) while red stays 炮. Caller
+    passes `side='black'` to apply the substitution."""
+    if not s:
+        return s
+    s = s.translate(_SIMP_TO_TRAD)
+    if side == 'black':
+        s = s.replace('炮', '包').replace('砲', '包')
+    return s
 
 
 def _recover_annote(text: str | None) -> str | None:
@@ -211,7 +219,7 @@ def scan_games(src_dir: Path):
                 iccs = str(mv)
                 fen = board.to_fen()  # position BEFORE this move
                 side = 'red' if board.move_player == cchess.RED else 'black'
-                chinese = _to_trad(iccs_to_text(board, iccs))
+                chinese = _to_trad(iccs_to_text(board, iccs), side)
                 annote = _recover_annote(getattr(mv, 'annote', None) or None)
                 fens_needed.add(fen)
                 applied = board.move_iccs(iccs)

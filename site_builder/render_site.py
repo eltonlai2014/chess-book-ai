@@ -68,11 +68,15 @@ def load_chessdb():
 
 
 def _iccs_to_chinese(fen: str, iccs: str) -> str:
-    """Convert an ICCS move to its Chinese notation using a throwaway board."""
+    """Convert an ICCS move to its Chinese notation using a throwaway board.
+    Side-aware: black cannons get written 包 (via _to_trad's side path)."""
     try:
         clone = ChessBoard(fen)
+        # move_player BEFORE applying — that's whose move we're labeling.
+        import cchess
+        side = 'red' if clone.move_player == cchess.RED else 'black'
         mv = clone.move_iccs(iccs)
-        return _to_trad(mv.to_text()) if mv else iccs
+        return _to_trad(mv.to_text(), side) if mv else iccs
     except Exception:
         return iccs
 
@@ -416,9 +420,9 @@ GAME_HTML = """<!DOCTYPE html>
 </aside>
 <section class="game-panel">
 <div class="control-bar">
-<select id="variation-select">{variation_options}</select>
+{variation_picker}
 <button class="nav-first" title="跳到第一步">|◀</button>
-<button class="nav-branch" id="navBranchBtn" title="往前回到最大的分歧局面（3 條以上叉路優先）">⑂ 跳分支</button>
+<button class="nav-branch" id="navBranchBtn" title="往前回到此變例最近的分歧步（3 條以上叉路優先）">⑂ 跳分支</button>
 <button class="nav-prev" title="上一步">◀</button>
 <span class="nav-status" id="navStatus">第 0 / 0 步</span>
 <button class="nav-next" title="下一步">▶</button>
@@ -492,26 +496,92 @@ def render_variation_table(vi: int, plies: list) -> str:
     )
 
 
-def _find_first_divergence(variations: list) -> dict | None:
-    """First ply (0-indexed) at which 2+ distinct iccs are played across
-    variations. Returns {pi, groups: {iccs: [vi,...]}, chinese: {iccs: str}}
-    or None if no such ply (single variation, or all variations identical)."""
-    if len(variations) <= 1:
+def _find_divergence_in_subset(variations: list, vis: list, start_pi: int = 0) -> dict | None:
+    """First ply ≥ start_pi where this subset of variations splits into
+    ≥2 distinct iccs values. Returns the same shape as _find_first_divergence."""
+    if len(vis) <= 1:
         return None
-    max_pi = max(len(v) for v in variations)
-    for pi in range(max_pi):
+    max_pi = max(len(variations[vi]) for vi in vis)
+    for pi in range(start_pi, max_pi):
         groups: dict[str, list[int]] = {}
-        for vi, plies in enumerate(variations):
-            if pi >= len(plies):
+        for vi in vis:
+            if pi >= len(variations[vi]):
                 continue
-            iccs = plies[pi].get('iccs')
+            iccs = variations[vi][pi].get('iccs')
             if iccs:
                 groups.setdefault(iccs, []).append(vi)
         if len(groups) >= 2:
-            chinese = {iccs: variations[vis[0]][pi].get('chinese', iccs)
-                       for iccs, vis in groups.items()}
+            chinese = {iccs: variations[vis_[0]][pi].get('chinese', iccs)
+                       for iccs, vis_ in groups.items()}
             return {'pi': pi, 'groups': groups, 'chinese': chinese}
     return None
+
+
+# Recursive grouping: when a bucket has > MAX_PER_GROUP variations, find the
+# next divergence within that bucket and sub-group. Limits depth so the UI
+# doesn't become a 10-level russian doll.
+MAX_PER_GROUP = 10
+MAX_TREE_DEPTH = 5
+
+
+def _build_variation_tree(variations: list, vis: list | None = None,
+                          start_pi: int = 0, depth: int = 0) -> dict:
+    """Returns either {'leaf': [vi,...]} or {'group': [{'label',
+    'count', 'child', 'pi', 'chinese'}, ...]}."""
+    if vis is None:
+        vis = list(range(len(variations)))
+    if len(vis) <= MAX_PER_GROUP or depth >= MAX_TREE_DEPTH:
+        return {'leaf': sorted(vis)}
+    div = _find_divergence_in_subset(variations, vis, start_pi)
+    if not div:
+        return {'leaf': sorted(vis)}
+    children = []
+    grouped_vis: set[int] = set()
+    order = sorted(div['groups'].keys(),
+                   key=lambda k: (-len(div['groups'][k]), k))
+    for iccs in order:
+        sub_vis = div['groups'][iccs]
+        sub = _build_variation_tree(variations, sub_vis, div['pi'] + 1, depth + 1)
+        children.append({
+            'pi': div['pi'],
+            'chinese': div['chinese'].get(iccs, iccs),
+            'label': f"第 {div['pi'] + 1} 步 · {div['chinese'].get(iccs, iccs)}",
+            'count': len(sub_vis),
+            'child': sub,
+        })
+        grouped_vis.update(sub_vis)
+    leftover = sorted(set(vis) - grouped_vis)
+    if leftover:
+        children.append({
+            'pi': -1, 'chinese': '其他',
+            'label': '其他（未達分歧步）',
+            'count': len(leftover),
+            'child': {'leaf': leftover},
+        })
+    return {'group': children}
+
+
+def _render_variation_tree(tree: dict, variations: list) -> str:
+    """Render the variation tree as nested <details> + option buttons.
+    Each leaf becomes a <button.varpicker-option> the JS hooks click on."""
+    if 'leaf' in tree:
+        return ''.join(
+            f'<button type="button" class="varpicker-option" data-vi="{vi}">'
+            f'變例 {vi + 1} <span class="vp-plycount">{len(variations[vi])} 步</span>'
+            f'</button>'
+            for vi in tree['leaf']
+        )
+    parts = []
+    for node in tree['group']:
+        inner = _render_variation_tree(node['child'], variations)
+        parts.append(
+            f'<details open class="vp-group">'
+            f'<summary>{escape_html(node["label"])}'
+            f'<span class="vp-count">{node["count"]} 條</span></summary>'
+            f'<div class="vp-children">{inner}</div>'
+            f'</details>'
+        )
+    return ''.join(parts)
 
 
 def render_game(game: dict) -> str:
@@ -520,48 +590,30 @@ def render_game(game: dict) -> str:
     tables = [render_variation_table(vi, plies)
               for vi, plies in enumerate(variations)]
 
-    # Group the variation dropdown by the move played at the first ply where
-    # variations diverge — turns a flat 149-item list into a few semantic
-    # buckets ("第11步: 馬三進四 / 仕六進五 / 砲五平四" etc).
-    div = _find_first_divergence(variations)
-    options: list[str] = []
-    if div:
-        # Order groups by group size (largest first — main line gets top spot).
-        grouped_vis = set()
-        order = sorted(div['groups'].keys(),
-                       key=lambda k: (-len(div['groups'][k]), k))
-        for iccs in order:
-            vis = div['groups'][iccs]
-            label = f"第 {div['pi'] + 1} 步 · {div['chinese'].get(iccs, iccs)}  ({len(vis)} 條)"
-            options.append(f'<optgroup label="{escape_html(label)}">')
-            for vi in vis:
-                options.append(
-                    f'<option value="{vi}">變例 {vi + 1} ({len(variations[vi])} 步)</option>'
-                )
-                grouped_vis.add(vi)
-            options.append('</optgroup>')
-        # Variations that ended before the divergence ply land in "其他".
-        leftover = [vi for vi in range(len(variations)) if vi not in grouped_vis]
-        if leftover:
-            options.append(
-                f'<optgroup label="其他 ({len(leftover)} 條，未達分歧點)">'
-            )
-            for vi in leftover:
-                options.append(
-                    f'<option value="{vi}">變例 {vi + 1} ({len(variations[vi])} 步)</option>'
-                )
-            options.append('</optgroup>')
-    else:
-        for vi, plies in enumerate(variations):
-            options.append(
-                f'<option value="{vi}">變例 {vi + 1} ({len(plies)} 步)</option>'
-            )
+    tree = _build_variation_tree(variations)
+    tree_html = _render_variation_tree(tree, variations)
+    initial_total = len(variations[0]) if variations else 0
+    # The picker widget — a trigger button + a hidden panel containing the
+    # nested <details> tree. JS toggles `hidden` on the panel and dispatches
+    # selectVariation when an option button is clicked.
+    picker = (
+        f'<div class="varpicker" id="varpicker">'
+        f'<button type="button" class="varpicker-trigger" id="varpickerTrigger" '
+        f'aria-haspopup="true" aria-expanded="false">'
+        f'<span class="varpicker-current" id="varpickerCurrent">變例 1 ({initial_total} 步)</span>'
+        f'<span class="varpicker-caret">▾</span>'
+        f'</button>'
+        f'<div class="varpicker-panel" id="varpickerPanel" hidden>'
+        f'{tree_html}'
+        f'</div>'
+        f'</div>'
+    )
 
     return GAME_HTML.format(
         title=title,
         result=game.get('result', '*'),
         n_var=len(variations),
-        variation_options='\n'.join(options),
+        variation_picker=picker,
         variation_tables='\n'.join(tables),
         game_json=json.dumps(game, ensure_ascii=False),
         traps_anchor=_file_anchor(game['file']),

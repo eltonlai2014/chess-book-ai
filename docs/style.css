@@ -844,6 +844,113 @@ header.game-header .meta {
   color: var(--bg);
 }
 
+/* Custom variation picker — replaces <select> so we can show multi-level
+   groupings (HTML forbids nested <optgroup>). Trigger + collapsible panel. */
+.varpicker { position: relative; display: inline-block; }
+.varpicker-trigger {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 5px 10px;
+  border: 1px solid var(--border, #999);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  min-width: 160px;
+  text-align: left;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4em;
+  border-radius: 3px;
+}
+.varpicker-trigger:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.varpicker.open .varpicker-trigger {
+  border-color: var(--accent);
+}
+.varpicker-caret { font-size: 0.8em; opacity: 0.6; }
+.varpicker-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 100;
+  margin-top: 4px;
+  min-width: 300px;
+  max-width: 480px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: var(--space-2, 8px);
+  background: var(--bg);
+  border: 1px solid var(--border, #999);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+}
+.varpicker-panel[hidden] { display: none; }
+.vp-group { margin: 0; }
+.vp-group > summary {
+  cursor: pointer;
+  padding: 4px 6px;
+  font-size: 13px;
+  font-weight: 500;
+  user-select: none;
+  border-radius: 3px;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+.vp-group > summary::before {
+  content: "▸";
+  font-size: 0.85em;
+  opacity: 0.55;
+  display: inline-block;
+  transition: transform var(--duration-fast, 0.15s) ease;
+}
+.vp-group[open] > summary::before { transform: rotate(90deg); }
+.vp-group > summary::-webkit-details-marker { display: none; }
+.vp-group > summary:hover { background: var(--accent-faint, rgba(0,0,0,0.05)); }
+.vp-count {
+  margin-left: auto;
+  font-size: 0.85em;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+.vp-children {
+  padding-left: 14px;
+  border-left: 1px solid var(--border-faint, rgba(0,0,0,0.1));
+  margin-left: 6px;
+}
+.varpicker-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 3px 8px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  border-radius: 3px;
+}
+.varpicker-option:hover {
+  background: var(--accent-faint, rgba(0,0,0,0.05));
+  border-color: var(--border-faint, rgba(0,0,0,0.15));
+}
+.varpicker-option.selected {
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+.vp-plycount {
+  margin-left: 0.5em;
+  opacity: 0.65;
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+}
+.varpicker-option.selected .vp-plycount { opacity: 0.9; }
+
 /* Demo buttons — pill toggles with subtle accent stripe */
 .control-bar button.demo-play {
   position: relative;
