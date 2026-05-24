@@ -845,111 +845,161 @@ header.game-header .meta {
 }
 
 /* Custom variation picker — replaces <select> so we can show multi-level
-   groupings (HTML forbids nested <optgroup>). Trigger + collapsible panel. */
+   groupings (HTML forbids nested <optgroup>). Trigger + collapsible panel.
+   Visual approach: no left-border indentation lines (too noisy at depth 4+).
+   Hierarchy is conveyed by chevron rotation + small dot bullets + tight
+   indent. Each group depth is implicit via DOM nesting, not borders. */
 .varpicker { position: relative; display: inline-block; }
 .varpicker-trigger {
   font-family: inherit;
   font-size: 14px;
-  padding: 5px 10px;
+  padding: 6px 12px;
   border: 1px solid var(--border, #999);
   background: var(--bg);
   color: var(--text);
   cursor: pointer;
-  min-width: 160px;
+  min-width: 200px;
   text-align: left;
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.4em;
-  border-radius: 3px;
+  gap: 0.5em;
+  border-radius: 6px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.varpicker-trigger:hover:not(:disabled) {
-  border-color: var(--accent);
-}
+.varpicker-trigger:hover:not(:disabled),
 .varpicker.open .varpicker-trigger {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-faint, rgba(0,0,0,0.06));
 }
-.varpicker-caret { font-size: 0.8em; opacity: 0.6; }
+.varpicker-caret {
+  font-size: 0.75em;
+  opacity: 0.55;
+  transition: transform 0.18s ease;
+}
+.varpicker.open .varpicker-caret { transform: rotate(180deg); }
 .varpicker-panel {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 6px);
   left: 0;
   z-index: 100;
-  margin-top: 4px;
-  min-width: 300px;
-  max-width: 480px;
-  max-height: 60vh;
+  min-width: 340px;
+  max-width: 520px;
+  max-height: 64vh;
   overflow-y: auto;
-  padding: var(--space-2, 8px);
+  padding: 6px;
   background: var(--bg);
   border: 1px solid var(--border, #999);
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15), 0 2px 4px rgba(0,0,0,0.06);
 }
 .varpicker-panel[hidden] { display: none; }
+
 .vp-group { margin: 0; }
 .vp-group > summary {
   cursor: pointer;
-  padding: 4px 6px;
+  padding: 5px 8px;
   font-size: 13px;
   font-weight: 500;
   user-select: none;
-  border-radius: 3px;
+  border-radius: 5px;
   list-style: none;
   display: flex;
   align-items: center;
-  gap: 0.5em;
+  gap: 0.45em;
+  color: var(--muted, var(--text));
+  transition: background 0.12s ease, color 0.12s ease;
 }
-.vp-group > summary::before {
-  content: "▸";
-  font-size: 0.85em;
-  opacity: 0.55;
-  display: inline-block;
-  transition: transform var(--duration-fast, 0.15s) ease;
-}
-.vp-group[open] > summary::before { transform: rotate(90deg); }
 .vp-group > summary::-webkit-details-marker { display: none; }
-.vp-group > summary:hover { background: var(--accent-faint, rgba(0,0,0,0.05)); }
+.vp-group > summary::marker { content: ""; }
+.vp-group > summary::before {
+  content: "›";
+  font-size: 1.05em;
+  line-height: 1;
+  opacity: 0.5;
+  width: 0.9em;
+  text-align: center;
+  display: inline-block;
+  transition: transform 0.18s ease;
+}
+.vp-group[open] > summary::before {
+  transform: rotate(90deg);
+  opacity: 0.85;
+}
+.vp-group > summary:hover {
+  background: var(--accent-faint, rgba(0,0,0,0.05));
+  color: var(--text);
+}
+.vp-group[open] > summary {
+  color: var(--text);
+}
 .vp-count {
   margin-left: auto;
-  font-size: 0.85em;
+  font-size: 11px;
+  font-weight: 500;
   opacity: 0.7;
   font-variant-numeric: tabular-nums;
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: var(--accent-faint, rgba(0,0,0,0.06));
+  letter-spacing: 0.02em;
 }
 .vp-children {
   padding-left: 14px;
-  border-left: 1px solid var(--border-faint, rgba(0,0,0,0.1));
-  margin-left: 6px;
+  margin: 1px 0 2px;
+}
+
+/* Leaf chip grid — replaces the old vertical list. Each chip is a
+   compact 2-line card (variation # on top, ply count below), packed
+   into an auto-fill grid so a group of 30+ leaves shows in 5-6 columns
+   instead of 30 rows. */
+.vp-leaves {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 5px;
+  padding: 3px 0 4px;
 }
 .varpicker-option {
-  display: block;
-  width: 100%;
-  text-align: left;
-  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  background: var(--accent-faint, rgba(0,0,0,0.04));
   border: 1px solid transparent;
-  padding: 3px 8px;
+  padding: 5px 4px;
   font-family: inherit;
-  font-size: 13px;
   color: var(--text);
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: 6px;
+  transition: background 0.1s ease, border-color 0.1s ease, transform 0.08s ease;
+  line-height: 1.15;
 }
 .varpicker-option:hover {
-  background: var(--accent-faint, rgba(0,0,0,0.05));
-  border-color: var(--border-faint, rgba(0,0,0,0.15));
+  background: var(--bg);
+  border-color: var(--accent);
+  transform: translateY(-1px);
 }
 .varpicker-option.selected {
   background: var(--accent);
+  border-color: var(--accent);
   color: var(--bg);
   font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+.vp-vinum {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
 }
 .vp-plycount {
-  margin-left: 0.5em;
-  opacity: 0.65;
-  font-size: 0.85em;
+  font-size: 10px;
+  opacity: 0.6;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }
-.varpicker-option.selected .vp-plycount { opacity: 0.9; }
+.varpicker-option.selected .vp-plycount { opacity: 0.85; }
 
 /* Demo buttons — pill toggles with subtle accent stripe */
 .control-bar button.demo-play {

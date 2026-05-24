@@ -883,8 +883,30 @@ const VAR_PICKER = {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         const vi = parseInt(btn.dataset.vi, 10);
-        if (!Number.isNaN(vi)) selectVariation(vi);
+        const pi = parseInt(btn.dataset.pi, 10);
+        if (!Number.isNaN(vi)) {
+          selectVariation(vi);
+          // data-pi is the deepest ancestor group's divergence ply — jump
+          // there so master lands at the step that makes this variation
+          // unique, not at the start of a long shared opening prefix.
+          if (!Number.isNaN(pi) && pi >= 0) activatePly(pi);
+        }
         this.close();
+      });
+    });
+    // Clicking a group <summary> navigates to the first variation under
+    // that branch AND seeks to the branch step — but the picker stays
+    // open so master can keep exploring siblings without re-opening.
+    // Native <details> toggle still fires alongside (chevron rotates).
+    this.panel.querySelectorAll(".vp-group > summary").forEach((sm) => {
+      sm.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const pi = parseInt(sm.dataset.pi, 10);
+        const firstVi = parseInt(sm.dataset.firstVi, 10);
+        if (!Number.isNaN(firstVi) && firstVi >= 0) {
+          if (firstVi !== STATE.vi) selectVariation(firstVi);
+          if (!Number.isNaN(pi) && pi >= 0) activatePly(pi);
+        }
       });
     });
     // Close panel when clicking outside.
@@ -1001,38 +1023,24 @@ function updateDemoButtons() {
   updateBranchButton();
 }
 
-// Walk BACKWARD from the current ply looking for the WIDEST upstream
-// branching point IN THE CURRENT VARIATION. "Widest" = most distinct
-// sibling moves at that position; a 3-way fork (e.g. 馬三進四 / 仕六進五 /
-// 炮五平四) is more meaningful than a 2-way fork one ply later. Returns
-// the pi within current variation; stays on the same variation so the
-// user just rewinds, not jumps to a sibling line.
+// Walk BACKWARD from the current ply and stop at the FIRST upstream
+// branching point — the immediately previous fork, regardless of width.
+// Master prefers the closest divergence over the widest: at 車二進五,
+// rewind to 包2平3 (a 2-way fork) rather than 馬三進四 (a wider 3-way
+// fork one ply earlier).
 function findNearestBranchPly() {
   if (!STATE.GAME) return -1;
   const plies = STATE.GAME.variations[STATE.vi];
   if (plies.length === 0) return -1;
-  // Skip the current ply itself — pressing 跳分支 on a fork point should
-  // take you BACK to the previous fork, not flag the spot you're already
-  // staring at.
   const from = STATE.pi >= 0 ? STATE.pi - 1 : plies.length - 2;
-  let bestPi = -1;
-  let bestWidth = 0;
   for (let pi = from; pi >= 0; pi--) {
     const ply = plies[pi];
     const alts = ALTS_BY_FEN[ply.fen] || [];
     if (alts.length <= 1) continue;
-    // Need at least one sibling iccs different from the current move.
     if (!alts.some(a => a.iccs !== ply.iccs)) continue;
-    const width = alts.length;
-    if (width > bestWidth) {
-      bestWidth = width;
-      bestPi = pi;
-      // Early exit on the first 3+-way fork — that's the main divergence
-      // and master doesn't want to walk past it to find something wider.
-      if (width >= 3) return bestPi;
-    }
+    return pi;
   }
-  return bestPi;
+  return -1;
 }
 
 function updateBranchButton() {

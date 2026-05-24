@@ -422,7 +422,7 @@ GAME_HTML = """<!DOCTYPE html>
 <div class="control-bar">
 {variation_picker}
 <button class="nav-first" title="跳到第一步">|◀</button>
-<button class="nav-branch" id="navBranchBtn" title="往前回到此變例最近的分歧步（3 條以上叉路優先）">⑂ 跳分支</button>
+<button class="nav-branch" id="navBranchBtn" title="回到此變例最接近的上一個分歧步">⑂ 跳分支</button>
 <button class="nav-prev" title="上一步">◀</button>
 <span class="nav-status" id="navStatus">第 0 / 0 步</span>
 <button class="nav-next" title="下一步">▶</button>
@@ -561,22 +561,44 @@ def _build_variation_tree(variations: list, vis: list | None = None,
     return {'group': children}
 
 
-def _render_variation_tree(tree: dict, variations: list) -> str:
-    """Render the variation tree as nested <details> + option buttons.
-    Each leaf becomes a <button.varpicker-option> the JS hooks click on."""
+def _first_leaf_vi(tree: dict) -> int:
+    """Walk the tree to find the first vi appearing in any leaf — used so
+    clicking a group jumps to its first representative variation."""
     if 'leaf' in tree:
-        return ''.join(
-            f'<button type="button" class="varpicker-option" data-vi="{vi}">'
-            f'變例 {vi + 1} <span class="vp-plycount">{len(variations[vi])} 步</span>'
+        return tree['leaf'][0] if tree['leaf'] else -1
+    for node in tree['group']:
+        vi = _first_leaf_vi(node['child'])
+        if vi >= 0:
+            return vi
+    return -1
+
+
+def _render_variation_tree(tree: dict, variations: list, parent_pi: int = -1) -> str:
+    """Render the variation tree as nested <details> + option buttons.
+    `parent_pi` is the deepest ancestor group's divergence pi — leaves
+    carry it as data-pi so clicking 變例 N jumps the board to where N
+    became unique vs. its siblings. Group <summary> carries its own pi
+    + first-vi so clicking a branch node jumps to that step in the first
+    leaf below it."""
+    if 'leaf' in tree:
+        chips = ''.join(
+            f'<button type="button" class="varpicker-option" '
+            f'data-vi="{vi}" data-pi="{parent_pi}">'
+            f'<span class="vp-vinum">{vi + 1}</span>'
+            f'<span class="vp-plycount">{len(variations[vi])} 步</span>'
             f'</button>'
             for vi in tree['leaf']
         )
+        return f'<div class="vp-leaves">{chips}</div>'
     parts = []
     for node in tree['group']:
-        inner = _render_variation_tree(node['child'], variations)
+        node_pi = node.get('pi', -1)
+        first_vi = _first_leaf_vi(node['child'])
+        inner = _render_variation_tree(node['child'], variations, node_pi)
         parts.append(
-            f'<details open class="vp-group">'
-            f'<summary>{escape_html(node["label"])}'
+            f'<details class="vp-group">'
+            f'<summary data-pi="{node_pi}" data-first-vi="{first_vi}">'
+            f'{escape_html(node["label"])}'
             f'<span class="vp-count">{node["count"]} 條</span></summary>'
             f'<div class="vp-children">{inner}</div>'
             f'</details>'
