@@ -21,16 +21,16 @@ Log "host: $env:COMPUTERNAME  user: $env:USERNAME"
 # evaluated. Threads stays at default (1) since this stage is engine-bound and
 # resumable, leaving the machine usable if user wakes up early.
 Log "[1/3] build_data.py depth=12 (full corpus)"
-py site_builder\build_data.py -d 12 2>&1 | Tee-Object -FilePath $log -Append
+.\.venv\Scripts\python.exe site_builder\build_data.py -d 12 2>&1 | Tee-Object -FilePath $log -Append
 
 # Stage 2: deep eval (depth 22) for plies in decisive variations. Threads=4
 # to finish faster overnight. SKIP_OPENING_PLIES=15 already wired in.
 Log "[2/3] enrich_decisive.py depth=22 threads=4"
-py site_builder\enrich_decisive.py --depth 22 --threads 4 --threshold 300 2>&1 | Tee-Object -FilePath $log -Append
+.\.venv\Scripts\python.exe site_builder\enrich_decisive.py --depth 22 --threads 4 --threshold 300 2>&1 | Tee-Object -FilePath $log -Append
 
 # Stage 3: render HTML site + mirror to docs/.
 Log "[3/3] render_site.py"
-py site_builder\render_site.py 2>&1 | Tee-Object -FilePath $log -Append
+.\.venv\Scripts\python.exe site_builder\render_site.py 2>&1 | Tee-Object -FilePath $log -Append
 
 Log "=== nightly build done ==="
 Log "next step (manual): git add docs/ output/site/data/games.json output/site/positions*.js && git commit && git push"

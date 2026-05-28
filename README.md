@@ -24,37 +24,48 @@
 
 需要 Python 3.10、Pikafish exe + NNUE（放在 `engine\Windows\` 下，git-ignored）。
 
+### 第一次 setup（建 venv + 裝 cchess）
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install cchess==1.25.5
+```
+
+之後跑任何指令都用 `.\.venv\Scripts\python.exe …`（或先 `.\.venv\Scripts\Activate.ps1` 然後 `python …`）。
+repo 內的 PowerShell 腳本一律用顯式路徑，不必啟動 venv。
+
 中文輸出若亂碼：`$env:PYTHONIOENCODING="utf-8"`
 
 ```powershell
 # --- 一次性 Markdown 報告 ---
-py analyze.py "D:\Elton\TestArea\chess-book\中砲對單提馬.XQF" -d 14 `
+.\.venv\Scripts\python.exe analyze.py "D:\Elton\TestArea\chess-book\中砲對單提馬.XQF" -d 14 `
     -o "output\中砲對單提馬.md"
 
 # --- 靜態網站 pipeline（典型順序）---
-py site_builder\build_data.py -d 12
+.\.venv\Scripts\python.exe site_builder\build_data.py -d 12
 #   ↑ XQF → games.json (含 tree 結構) + positions.js (淺算 depth 12)
 
-py site_builder\redo_deep.py --depth 22 --threads 4 --hash-mb 512
+.\.venv\Scripts\python.exe site_builder\redo_deep.py --depth 22 --threads 4 --hash-mb 512
 #   ↑ 深算 depth 22（用乾淨的 clean_eval driver，~14h）
 
-py site_builder\chessdb_query.py --game "."
+.\.venv\Scripts\python.exe site_builder\chessdb_query.py --game "."
 #   ↑ 從 chessdb.cn 抓 plies 10-25 的雲庫評分（~45 分鐘）
 
-py site_builder\render_site.py
+.\.venv\Scripts\python.exe site_builder\render_site.py
 #   ↑ 渲染 output/site/，並 mirror 到 docs/
 
 # --- 分析輔助 ---
-py site_builder\list_trap_plies.py --threshold 200 --shallow-blind-only
+.\.venv\Scripts\python.exe site_builder\list_trap_plies.py --threshold 200 --shallow-blind-only
 #   ↑ 產出 trap_plies_blind.csv / .md（每變例 top-3）
 
-py site_builder\depth_probe.py --game 牛頭滾 --variation 10 --ply 31 `
+.\.venv\Scripts\python.exe site_builder\depth_probe.py --game 牛頭滾 --variation 10 --ply 31 `
     --depths 12,16,20,24
 #   ↑ 比對單一位置不同深度的收斂
 
 # --- 冒煙測試（就是 test suite）---
-py smoke_engine.py
-py smoke_xqf.py
+.\.venv\Scripts\python.exe smoke_engine.py
+.\.venv\Scripts\python.exe smoke_xqf.py
 ```
 
 ---

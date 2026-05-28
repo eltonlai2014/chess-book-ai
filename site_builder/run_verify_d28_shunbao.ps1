@@ -14,7 +14,7 @@ $log = "output/verify_d28_shunbao_$ts.log"
 "=== scheduled start $ts ===" | Out-File -FilePath $log -Encoding utf8
 
 try {
-  py site_builder\verify_d28_shunbao.py --max-hours 9 --checkpoint-every 5 `
+  .\.venv\Scripts\python.exe site_builder\verify_d28_shunbao.py --max-hours 9 --checkpoint-every 5 `
     *>&1 | Out-File -FilePath $log -Encoding utf8 -Append
 } finally {
   powercfg /change standby-timeout-ac 30   2>&1 | Out-Null

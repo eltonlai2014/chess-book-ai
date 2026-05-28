@@ -23,48 +23,57 @@ The site has three main pages:
 
 ## Commands
 
-Run on Windows with Python 3.10 (`py` launcher). If Chinese output prints as mojibake, set `$env:PYTHONIOENCODING="utf-8"` before running.
+Run on Windows via the per-repo venv at `.\.venv\Scripts\python.exe` (created with `py -m venv .venv`, cchess pinned to **1.25.5** — `from cchess import read_from_xqf` was dropped from public exports in 1.26). If Chinese output prints as mojibake, set `$env:PYTHONIOENCODING="utf-8"` before running.
 
 ```powershell
 # --- one-off Markdown report ---
-py analyze.py "D:\Elton\TestArea\chess-book\中砲對單提馬.XQF" -d 14 -o "output\中砲對單提馬.md"
+.\.venv\Scripts\python.exe analyze.py "D:\Elton\TestArea\chess-book\中砲對單提馬.XQF" -d 14 -o "output\中砲對單提馬.md"
 
 # --- static-site pipeline (typical order) ---
-py site_builder\build_data.py -d 12              # XQF → games.json + positions.js (shallow depth-12)
-py site_builder\enrich_decisive.py --depth 22 --threads 4 --threshold 300
+.\.venv\Scripts\python.exe site_builder\build_data.py -d 12              # XQF → games.json + positions.js (shallow depth-12)
+.\.venv\Scripts\python.exe site_builder\enrich_decisive.py --depth 22 --threads 4 --threshold 300
                                                   # depth-22 on variations whose final |shallow_score| > 300
-py site_builder\chessdb_query.py                 # optional: fetch chessdb.cn winrate/score for plies 10-25
-py site_builder\render_site.py                   # writes output/site/, mirrors → docs/ for GitHub Pages
-py site_builder\render_site.py --fast            # skip [enrich] step; reuses existing positions_view.js.
+.\.venv\Scripts\python.exe site_builder\chessdb_query.py                 # optional: fetch chessdb.cn winrate/score for plies 10-25
+.\.venv\Scripts\python.exe site_builder\render_site.py                   # writes output/site/, mirrors → docs/ for GitHub Pages
+.\.venv\Scripts\python.exe site_builder\render_site.py --fast            # skip [enrich] step; reuses existing positions_view.js.
                                                   # Auto-engages when positions_view.js is newer than every
                                                   # eval source — typical case for annote-only XQF edits.
-py site_builder\sync_assets.py                   # FASTEST iteration: copy ONLY style.css + board.js to
+.\.venv\Scripts\python.exe site_builder\sync_assets.py                   # FASTEST iteration: copy ONLY style.css + board.js to
                                                   # output/site + docs (<1s). Use for CSS/JS-only changes.
 
 # --- depth-28 verification of traps ---
-py site_builder\verify_traps.py                  # depth 28 over every (fen_before, fen_after) trap pair.
+.\.venv\Scripts\python.exe site_builder\verify_traps.py                  # depth 28 over every (fen_before, fen_after) trap pair.
                                                   # Resumable, checkpoints every 5 FENs, auto-renders
                                                   # and pushes when done. See run_verify_traps.ps1 +
                                                   # the ChessBookVerifyDepth28 schtask for scheduled runs.
 
 # --- analysis utilities ---
-py site_builder\find_trap_plies.py               # CLI variant of the trap detector (top-20 print)
-py site_builder\scan_brilliants.py               # CLI variant of the brilliant detector
-py site_builder\depth_probe.py --game 牛頭滾 --variation 10 --ply 31 --depths 12,16,20,24
+.\.venv\Scripts\python.exe site_builder\find_trap_plies.py               # CLI variant of the trap detector (top-20 print)
+.\.venv\Scripts\python.exe site_builder\scan_brilliants.py               # CLI variant of the brilliant detector
+.\.venv\Scripts\python.exe site_builder\depth_probe.py --game 牛頭滾 --variation 10 --ply 31 --depths 12,16,20,24
                                                   # convergence-vs-depth probe for one position
-py site_builder\probe_depth28.py                 # time-probe depth 28 on a sample of trap FENs
+.\.venv\Scripts\python.exe site_builder\probe_depth28.py                 # time-probe depth 28 on a sample of trap FENs
 
 # --- annote-fix helpers (for the ~209 broken-encoding annotes) ---
-py site_builder\list_broken_annotes.py           # → output/broken_annotes.md (checklist for XQStudio)
-py site_builder\suggest_annotes.py               # → output/suggested_annotes.md (engine-derived placeholders)
-py site_builder\compare_annotes.py               # → output/annote_compare.md (AI/ vs original recovery)
+.\.venv\Scripts\python.exe site_builder\list_broken_annotes.py           # → output/broken_annotes.md (checklist for XQStudio)
+.\.venv\Scripts\python.exe site_builder\suggest_annotes.py               # → output/suggested_annotes.md (engine-derived placeholders)
+.\.venv\Scripts\python.exe site_builder\compare_annotes.py               # → output/annote_compare.md (AI/ vs original recovery)
 
 # --- smoke tests (the test suite) ---
-py smoke_engine.py
-py smoke_xqf.py
+.\.venv\Scripts\python.exe smoke_engine.py
+.\.venv\Scripts\python.exe smoke_xqf.py
 ```
 
 There is no test runner, linter, or build step. The two `smoke_*.py` scripts are the test suite — run them after touching engine glue or XQF parsing.
+
+### RTK prefix (token saver)
+
+The master has `rtk` (Rust Token Killer) installed at `D:\tools\rtk\rtk.exe`. **Default to prefixing read-only / high-noise commands with `rtk`** when invoking via shell — it compresses stdout 60–98% before it reaches the model context. Windows native has no auto-hook, so the prefix must be explicit.
+
+- ✅ Worth prefixing: `rtk git status`, `rtk find … -name "*.py"`, `rtk grep …`, `rtk read output/verify_traps_run_*.log`, `rtk pytest`, `rtk cargo …`.
+- ⏸ No benefit (skip the prefix): `git diff` of real code, `git log` (already compact), Pikafish `info depth …` streams piped through Python scripts (rtk can't intercept Python stdout — pipe through `rtk pipe` or `rtk log` only if you specifically want log filtering).
+- 🚫 Broken on Windows: `rtk tree` (Windows `tree.com` rejects rtk's unix-style ignore list — use `rtk find` instead).
+- Check lifetime savings any time with `rtk gain`.
 
 ## Architecture
 

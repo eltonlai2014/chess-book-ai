@@ -34,7 +34,7 @@ The `engine/` directory is git-ignored (binaries too big). To bootstrap a fresh 
 1. Download a recent Pikafish build matching the CPU (i7-8700 = AVX2). [pikafish/Pikafish](https://github.com/official-pikafish/Pikafish) releases.
 2. Drop `pikafish-avx2.exe` (or platform equivalent) into `engine/Windows/`.
 3. Drop the matching `pikafish.nnue` into the **same directory as the exe**. Pikafish loads NNUE relative to its own working directory; if the NNUE goes missing the engine silently runs without it and gives garbage scores.
-4. Verify: `py smoke_engine.py` — should print a few `info depth N score cp X` lines and exit cleanly.
+4. Verify: `.\.venv\Scripts\python.exe smoke_engine.py` — should print a few `info depth N score cp X` lines and exit cleanly.
 
 The repo hard-codes `engine/Windows/pikafish-avx2.exe`. If you're on macOS/Linux you'll need to either change `EXE` in [`site_builder/clean_eval.py`](site_builder/clean_eval.py), [`site_builder/verify_traps.py`](site_builder/verify_traps.py), etc., or symlink the binary. The site itself (output/, docs/) is platform-independent.
 
@@ -52,7 +52,7 @@ Master has a primary workstation (Windows) running verify_traps nightly. The dep
    This brings in whatever the primary machine has finished so far.
 3. Run verify_traps as usual:
    ```bash
-   py site_builder/verify_traps.py --max-hours <H>
+   .\.venv\Scripts\python.exe site_builder/verify_traps.py --max-hours <H>
    ```
    The script's `is_valid_entry` check skips any FEN already at depth ≥ 28, so the two machines naturally process disjoint subsets without explicit coordination.
 4. When the run ends (or hits `--max-hours`), the script auto-runs render_site + git commit + git push. If push is rejected (the primary machine pushed in between), resolve via:
@@ -71,7 +71,7 @@ Master has a primary workstation (Windows) running verify_traps nightly. The dep
 **Status checking** without running anything:
 
 ```bash
-py -c "import json,re; t=open('output/site/positions_very_deep.js',encoding='utf-8').read(); m=re.search(r'=\s*(\{.*\});',t,re.S); print(len(json.loads(m.group(1))), 'FENs at depth 28')"
+.\.venv\Scripts\python.exe -c "import json,re; t=open('output/site/positions_very_deep.js',encoding='utf-8').read(); m=re.search(r'=\s*(\{.*\});',t,re.S); print(len(json.loads(m.group(1))), 'FENs at depth 28')"
 ```
 
 ## File layout cheat sheet
@@ -122,11 +122,11 @@ chess-book-ai/
 ### "Master edited an XQF file — pick up the change"
 
 ```powershell
-py site_builder\build_data.py -d 12         # incremental; will report N new FENs
-py site_builder\enrich_decisive.py --depth 22 --threads 4 --threshold 300
+.\.venv\Scripts\python.exe site_builder\build_data.py -d 12         # incremental; will report N new FENs
+.\.venv\Scripts\python.exe site_builder\enrich_decisive.py --depth 22 --threads 4 --threshold 300
                                              # only runs if there are new FENs in decisive variations
-py site_builder\chessdb_query.py             # optional, only useful for plies 10-25
-py site_builder\render_site.py               # fast-path auto-engages if no engine work was needed
+.\.venv\Scripts\python.exe site_builder\chessdb_query.py             # optional, only useful for plies 10-25
+.\.venv\Scripts\python.exe site_builder\render_site.py               # fast-path auto-engages if no engine work was needed
 ```
 
 If `build_data.py` reports `0 new`, the edit was annote-only — just `render_site.py` is enough.
@@ -136,7 +136,7 @@ After render, commit with a message like `Absorb <filename> annote edit` or `Abs
 ### "Iterate on CSS or board.js"
 
 ```powershell
-py site_builder\sync_assets.py   # <1 second
+.\.venv\Scripts\python.exe site_builder\sync_assets.py   # <1 second
 ```
 
 Refresh the browser. No HTML re-render needed unless you changed template strings in render_site.py.
@@ -144,7 +144,7 @@ Refresh the browser. No HTML re-render needed unless you changed template string
 ### "Verify traps haven't regressed"
 
 ```powershell
-py site_builder\find_trap_plies.py | head -30
+.\.venv\Scripts\python.exe site_builder\find_trap_plies.py | head -30
 ```
 
 Top-20 traps by deep-loss. Compare against the previous run's output to spot drift.

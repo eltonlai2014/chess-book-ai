@@ -20,7 +20,7 @@ $log = "output/verify_traps_run_$ts.log"
 "=== scheduled start $ts ===" | Out-File -FilePath $log -Encoding utf8
 
 try {
-  py site_builder\verify_traps.py --max-hours 13 --checkpoint-every 5 `
+  .\.venv\Scripts\python.exe site_builder\verify_traps.py --max-hours 13 --checkpoint-every 5 `
     *>&1 | Out-File -FilePath $log -Encoding utf8 -Append
 } finally {
   # Restore reasonable defaults so the machine sleeps normally afterwards.
