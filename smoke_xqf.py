@@ -1,8 +1,9 @@
 import sys, inspect
+from pathlib import Path
 import cchess
 from cchess import read_from_xqf
 
-XQF = r"D:\Elton\TestArea\chess-book\中砲對單提馬.XQF"
+XQF = str(Path(__file__).resolve().parent / "samples" / "xqf" / "中砲對單提馬.XQF")
 
 game = read_from_xqf(XQF)
 print(f"type: {type(game).__name__}")

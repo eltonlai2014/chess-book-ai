@@ -32,3 +32,11 @@ venv/
 
 # Claude Code session state
 .claude/
+
+# Test sample corpus — only the one file smoke_xqf.py needs is checked in.
+# Master keeps a wider sample library locally (CBL teaching books etc.) but
+# we don't want those in the repo: bloat + book-copyright concerns.
+samples/*
+!samples/xqf/
+samples/xqf/*
+!samples/xqf/中砲對單提馬.XQF
