@@ -120,7 +120,10 @@ def run_engine(depth, threads, hash_mb, checkpoint_every, deadline=None):
 def post_render_and_push():
     """Run render to surface any newly-detected traps, then commit + push."""
     print("[post] render_site.py", flush=True)
-    subprocess.run(['py', str(REPO / 'site_builder' / 'render_site.py')],
+    subprocess.run([sys.executable, str(REPO / 'site_builder' / 'render_site.py')],
+                   check=True, cwd=str(REPO))
+    print("[post] migrate_to_sqlite.py", flush=True)
+    subprocess.run([sys.executable, str(REPO / 'site_builder' / 'migrate_to_sqlite.py')],
                    check=True, cwd=str(REPO))
     print("[post] git add", flush=True)
     subprocess.run(['git', 'add', 'docs/', 'output/site/'],

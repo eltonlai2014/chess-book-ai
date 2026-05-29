@@ -127,9 +127,13 @@ def run_engine(depth, threads, hash_mb, checkpoint_every, deadline=None):
 
 
 def post_render_and_push():
-    """Render is OPTIONAL — UI doesn't surface d32 yet, but we commit + push
-    the data file so master can inspect cross-machine."""
-    print("[post] git add data only (UI not yet plumbed)", flush=True)
+    """UI doesn't surface d32 yet, but we refresh the SQLite eval DB (consumed
+    read-only by the sibling chess-book-editor) and commit + push so master
+    can inspect cross-machine + cross-repo."""
+    print("[post] migrate_to_sqlite.py", flush=True)
+    subprocess.run([sys.executable, str(REPO / 'site_builder' / 'migrate_to_sqlite.py')],
+                   check=True, cwd=str(REPO))
+    print("[post] git add data", flush=True)
     subprocess.run(['git', 'add', str(D32_JS.relative_to(REPO))],
                    check=True, cwd=str(REPO))
     msg = (
@@ -137,8 +141,9 @@ def post_render_and_push():
         "\n"
         "Re-evaluates the 56 depth-28 FENs that live in 順包直車3兵對橫車邊馬\n"
         "and 順包兩頭蛇對雙橫車 at depth 32 to test whether depth-28 confirm/\n"
-        "reject classifications are stable. Output: positions_d32.js. UI not\n"
-        "yet plumbed — data file only.\n"
+        "reject classifications are stable. Commits positions_d32.js; also\n"
+        "rebuilds the local output/positions.db (gitignored) so the sibling\n"
+        "chess-book-editor sees fresh evals. UI in this repo not yet plumbed.\n"
         "\n"
         "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
     )
