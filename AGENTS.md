@@ -4,6 +4,8 @@ Onboarding playbook for any AI agent (Claude Code, Codex, etc.) picking up this 
 
 If you're a brand-new agent: read this top-to-bottom once, then refer back to [CLAUDE.md](CLAUDE.md) for the architecture and gotchas deep-dive.
 
+> **New 2026-05-29 — SQLite integration with sibling editor**: see [SQLITE_EVAL_DB.md](SQLITE_EVAL_DB.md). `output/positions.db` is now produced by `site_builder/migrate_to_sqlite.py` from the existing `positions*.js` + `chessdb_cache.json` files, and consumed read-only by the [chess-book-editor](../chess-book-editor/) Flask backend. This repo's pipeline is unchanged.
+
 ## What this project does
 
 Take 42 Chinese-chess opening-book files (XQF format, hand-curated by master over years), run them through Pikafish at depths 12 + 22 + 28, and surface the positions where the book and the engine disagree on the right move. The headline finding is "human traps": moves the book recommends that depth-12 thinks are fine but depth-22 reveals as blunders.

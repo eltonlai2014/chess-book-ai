@@ -7,6 +7,12 @@ output/*.log
 output/*.md
 # Trap review tables — regenerable from list_trap_plies.py
 output/*.csv
+# SQLite eval DB (Phase 1, consumed by chess-book-editor). Regenerable from
+# positions*.js / chessdb_cache.json via site_builder/migrate_to_sqlite.py.
+# See SQLITE_EVAL_DB.md.
+output/positions.db
+output/positions.db-wal
+output/positions.db-shm
 
 # Python
 __pycache__/

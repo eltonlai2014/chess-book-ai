@@ -3,6 +3,8 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 > **Sibling doc**: [AGENTS.md](AGENTS.md) is the cross-machine / cross-agent onboarding playbook (also written for Codex). When state diverges, AGENTS.md is the more recent and detailed source.
+>
+> **Integration doc**: [SQLITE_EVAL_DB.md](SQLITE_EVAL_DB.md) — read this if you are touching anything that produces eval data (build_data, enrich_decisive, verify_traps, chessdb_query, render_site) or if you are working from the sibling [chess-book-editor](../chess-book-editor/) repo. The editor consumes `output/positions.db` read-only; this repo's pipeline still owns the source-of-truth `.js` / `.json` files.
 
 ## Project
 
@@ -40,6 +42,9 @@ Run on Windows via the per-repo venv at `.\.venv\Scripts\python.exe` (created wi
                                                   # eval source — typical case for annote-only XQF edits.
 .\.venv\Scripts\python.exe site_builder\sync_assets.py                   # FASTEST iteration: copy ONLY style.css + board.js to
                                                   # output/site + docs (<1s). Use for CSS/JS-only changes.
+.\.venv\Scripts\python.exe site_builder\migrate_to_sqlite.py             # rebuild output/positions.db from positions*.js +
+                                                  # chessdb_cache.json. Run after any enrich/render so the
+                                                  # sibling chess-book-editor sees fresh evals. See SQLITE_EVAL_DB.md.
 
 # --- depth-28 verification of traps ---
 .\.venv\Scripts\python.exe site_builder\verify_traps.py                  # depth 28 over every (fen_before, fen_after) trap pair.
