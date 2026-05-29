@@ -105,6 +105,56 @@ The editor's source-of-truth path resolution:
 
 The editor never opens this file for write — it uses SQLite URI mode `?mode=ro`. If the file is missing, the editor degrades to "引擎資料未連線" silently.
 
+## Score sign convention — DB is mover-POV, UI must flip to red-POV
+
+**The DB stores `score` and `mate` from the *side-to-move's* perspective**, mirroring Pikafish UCI output verbatim (positive = side-to-move is winning). That's the raw engine output, no transformation at write time.
+
+**But every UI surface in chess-book-editor displays red-perspective scores** (positive = red advantage, negative = black). chess-book-ai's site_builder does the same (`board.js:redPerspectiveScore`). For consistency the editor MUST apply the flip at the display boundary.
+
+### The rule
+
+```python
+def to_red_score(fen: str, score: int | None) -> int | None:
+    """DB stores mover-POV; flip to fixed red-POV for display.
+    Red-to-move (FEN ends `w`): keep as-is.
+    Black-to-move (FEN ends `b`): flip sign."""
+    if score is None:
+        return None
+    return score if fen.split()[1] == 'w' else -score
+
+
+def to_red_mate(fen: str, mate: int | None) -> int | None:
+    """Same flip for mate distance (positive = side-to-move mates in N)."""
+    if mate is None:
+        return None
+    return mate if fen.split()[1] == 'w' else -mate
+```
+
+JavaScript equivalent (for the frontend that reads `/api/eval/batch` JSON):
+
+```js
+function toRedScore(fen, score) {
+  if (score == null) return null;
+  return fen.split(' ')[1] === 'w' ? score : -score;
+}
+function toRedMate(fen, mate) {
+  if (mate == null) return null;
+  return fen.split(' ')[1] === 'w' ? mate : -mate;
+}
+```
+
+### Where to apply
+
+- ✅ **Every place a score/mate is rendered for a human** — the strip below the board, hover tooltips, badge labels.
+- ✅ Both `score` and `mate`. PV's leading sign in some display formats also needs flipping if you derive it from `score`.
+- ❌ `best_iccs`, `pv_json` — ICCS notation is absolute board coordinates, no flip needed.
+- ❌ **Trap / brilliant detection** — the `_ply_loss` formula already operates in mover-POV (`score(fen_before) + score(fen_after)` is the mover's giveaway). Flipping inside detection would invert sign meaning and break threshold checks. Run detection on the raw DB values, then apply the display flip only when surfacing the resulting badges' numeric labels.
+- ❌ Server-side aggregations (averages, totals over groups of FENs) — those have no inherent "perspective" until projected onto one side.
+
+### Cross-check
+
+A position with FEN ending `b` and DB `score = -344` should display as `+344` (Red advantage). The editor's existing screenshot at `127.0.0.1:5174` was showing `-31` for a black-to-move FEN; with the flip it should read `+31`.
+
 ## Trap / brilliant detection — single source of truth
 
 The editor ports these constants from [`render_site.py`](site_builder/render_site.py) verbatim:
