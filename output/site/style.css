@@ -388,12 +388,6 @@ main.categories { padding: var(--space-5) var(--space-5); }
   margin-left: auto;
   white-space: nowrap;
 }
-.game-list .ai-mark {
-  color: var(--note);
-  font-family: var(--font-serif);
-  cursor: help;
-  font-size: 13px;
-}
 
 /* Per-game badges on the index — trap count, decisive count, deep coverage.
    Same-line with title so the user can scan "where to spend study time". */

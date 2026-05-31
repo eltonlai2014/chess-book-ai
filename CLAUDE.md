@@ -62,7 +62,6 @@ Run on Windows via the per-repo venv at `.\.venv\Scripts\python.exe` (created wi
 # --- annote-fix helpers (for the ~209 broken-encoding annotes) ---
 .\.venv\Scripts\python.exe site_builder\list_broken_annotes.py           # → output/broken_annotes.md (checklist for XQStudio)
 .\.venv\Scripts\python.exe site_builder\suggest_annotes.py               # → output/suggested_annotes.md (engine-derived placeholders)
-.\.venv\Scripts\python.exe site_builder\compare_annotes.py               # → output/annote_compare.md (AI/ vs original recovery)
 
 # --- smoke tests (the test suite) ---
 .\.venv\Scripts\python.exe smoke_engine.py

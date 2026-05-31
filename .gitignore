@@ -14,6 +14,11 @@ output/positions.db
 output/positions.db-wal
 output/positions.db-shm
 
+# Master game manifest — 115 MB once the 中貴棋譜 corpus expanded past
+# GitHub's 100 MB hard file limit. Regenerable from XQF source by
+# site_builder/build_data.py --scan-only.
+output/site/data/games.json
+
 # Python
 __pycache__/
 *.pyc

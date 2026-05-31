@@ -10,6 +10,7 @@ Resumable: existing positions.js is loaded and only missing FENs are evaluated.
 import argparse
 import json
 import re
+import subprocess
 import sys
 import time
 from collections import defaultdict
@@ -329,6 +330,10 @@ def main():
     ap.add_argument('--hash-mb', type=int, default=16, help='Pikafish Hash size in MB')
     ap.add_argument('--limit', type=int, default=None, help='Process only first N files (smoke test)')
     ap.add_argument('--src', default=str(SRC_DIR))
+    ap.add_argument('--scan-only', action='store_true',
+                    help='Write games.json + report FEN counts, skip Pikafish evaluation')
+    ap.add_argument('--no-migrate', action='store_true',
+                    help='Skip the post-build migrate_to_sqlite step')
     args = ap.parse_args()
 
     src = Path(args.src)
@@ -349,9 +354,19 @@ def main():
     existing = load_existing_positions(POSITIONS_JS)
     print(f"[cache] {len(existing)} positions in {POSITIONS_JS.name}", file=sys.stderr)
 
+    if args.scan_only:
+        new_fens = len([f for f in fens if f not in existing])
+        print(f"[scan-only] {len(fens)} unique FENs, {new_fens} not yet in cache — skipping engine", file=sys.stderr)
+        return
+
     results = evaluate(fens, args.depth, existing, threads=args.threads, hash_mb=args.hash_mb)
     save_positions(POSITIONS_JS, results)
     print(f"[write] {POSITIONS_JS} ({len(results)} positions)", file=sys.stderr)
+
+    if not args.no_migrate:
+        print("[post] migrate_to_sqlite.py", file=sys.stderr)
+        subprocess.run([sys.executable, str(REPO / 'site_builder' / 'migrate_to_sqlite.py')],
+                       check=True, cwd=str(REPO))
 
 
 if __name__ == '__main__':

@@ -25,7 +25,7 @@ SRC = Path(r"D:\Elton\TestArea\chess-book")
 
 # Target file(s) the user wants suggestions for. Add more if needed.
 TARGETS = [
-    ("牛頭滾", SRC / "AI" / "牛頭滾.xqf"),
+    ("牛頭滾", SRC / "牛頭滾.XQF"),
 ]
 
 

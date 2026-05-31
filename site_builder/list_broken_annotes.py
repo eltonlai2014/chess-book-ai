@@ -1,4 +1,4 @@
-"""Per-file checklist of AI/ XQF annotes that contain NULL bytes or other
+"""Per-file checklist of XQF annotes that contain NULL bytes or other
 control-char garbage. Each row gives variation + ply coordinates so the user
 can find the position in XQStudio (演播室) and rewrite the annote there.
 
@@ -24,9 +24,9 @@ REPO = Path(__file__).resolve().parent.parent
 SRC = Path(r"D:\Elton\TestArea\chess-book")
 
 PAIRS = [
-    ("牛頭滾",                  SRC / "AI" / "牛頭滾.xqf"),
-    ("順包直車3兵對橫車邊馬",    SRC / "AI" / "順包" / "順包直車3兵對橫車邊馬.xqf"),
-    ("順包兩頭蛇對雙橫車",      SRC / "AI" / "順包" / "順包兩頭蛇對雙橫車.xqf"),
+    ("牛頭滾",                  SRC / "牛頭滾.XQF"),
+    ("順包直車3兵對橫車邊馬",    SRC / "順包" / "順包直車3兵對橫車邊馬.XQF"),
+    ("順包兩頭蛇對雙橫車",      SRC / "順包" / "順包兩頭蛇對雙橫車.XQF"),
 ]
 
 
@@ -97,7 +97,7 @@ def main():
     out_json.parent.mkdir(parents=True, exist_ok=True)
     lines = [
         "# 需要在演播室手動修正的註解\n\n",
-        "對應檔案 = `D:\\Elton\\TestArea\\chess-book\\AI\\` 下的版本（site 跑的是這一份）。\n",
+        "對應檔案 = `D:\\Elton\\TestArea\\chess-book\\` 下的版本（site 跑的是這一份）。\n",
         "下表已按 (檔案, 變例, ply) 排序，去除重複的同局面同註解。\n\n",
         "**符號**：`␀` = NULL byte、`↵` = 換行（CR/LF）。\n",
         "**做法**：演播室開檔 → 切到對應變例 → 走到第 N 步 → 編輯註解 → 重存。\n",

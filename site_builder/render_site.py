@@ -23,11 +23,26 @@ from enrich_depth import score_cp  # noqa: E402
 # Keep this in sync with site_builder/find_trap_plies.py and assets/board.js.
 SKIP_OPENING_PLIES = 15
 
+# Games whose rel_path contains any of these substrings are EXCLUDED from the
+# public site (skipped in rendering AND not enriched into positions_view.js).
+# They remain in output/site/data/games.json + positions.js for local pipeline
+# scripts (verify_*.py, editor consuming positions.db, etc.).
+#
+# Why: 中貴棋譜/ alone is 824 match-record games — useful as local analysis
+# corpus but blows games.json past GitHub's 100 MB file limit and dilutes the
+# public site's "opening trap" focus.
+PUBLIC_EXCLUDE_KEYWORDS = ('中貴棋譜',)
+
 REPO = Path(__file__).resolve().parent.parent
 OUT_DIR = REPO / "output" / "site"
 DATA_DIR = OUT_DIR / "data"
 GAMES_DIR = OUT_DIR / "games"
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+
+
+def is_public(game: dict) -> bool:
+    rel = game.get('rel_path', '') or ''
+    return not any(k in rel for k in PUBLIC_EXCLUDE_KEYWORDS)
 
 
 def load_games():
@@ -643,11 +658,8 @@ def render_game(game: dict) -> str:
 
 
 def _group_key(rel_path: str) -> str:
-    """Group by chess-category subdirectory. Strip the 'AI\\' provenance prefix
-    so manually-fixed copies sort with their semantic family."""
+    """Group by chess-category subdirectory."""
     p = rel_path.replace('/', '\\')
-    if p.startswith('AI\\'):
-        p = p[3:]
     if '\\' in p:
         return p.rsplit('\\', 1)[0]
     return '主目錄'
@@ -865,7 +877,7 @@ def compute_game_stats(game: dict, shallow: dict, deep: dict,
 
 
 def _folder_anchor(folder: str) -> str:
-    """ASCII-safe anchor id for a folder (handles 主目錄, AI/順包 etc.)."""
+    """ASCII-safe anchor id for a folder (handles 主目錄, 順包 etc.)."""
     import hashlib
     return 'folder-' + hashlib.sha1(folder.encode('utf-8')).hexdigest()[:10]
 
@@ -1192,7 +1204,6 @@ def render_index(games: list, n_positions: int, stats_by_file: dict,
             title = display_title(g['file'])
             st = stats_by_file.get(g['file']) or {}
             ply_unique = st.get('unique_plies') or sum(len(v) for v in g['variations'])
-            ai_mark = ' <span class="ai-mark" title="已手動修正註解的版本">✎</span>' if g.get('rel_path', '').replace('/', '\\').startswith('AI\\') else ''
             # Decisive + deep-coverage stay per-game (they describe the game's
             # own analysis state). Trap count moves up to the folder badge.
             badges = []
@@ -1212,7 +1223,7 @@ def render_index(games: list, n_positions: int, stats_by_file: dict,
                 )
             badge_html = ' '.join(badges)
             items.append(
-                f'<li><a href="games/{slug}.html">{title}</a>{ai_mark} '
+                f'<li><a href="games/{slug}.html">{title}</a> '
                 f'<span class="dim">· {len(g["variations"])} 變例 · {ply_unique} 步</span> '
                 f'{badge_html}</li>'
             )
@@ -1283,13 +1294,24 @@ def _enrich_is_current() -> bool:
 
 def main():
     fast = '--fast' in sys.argv
-    games = load_games()
-    positions = load_positions()
+    all_games = load_games()
+    games = [g for g in all_games if is_public(g)]
+    excluded = len(all_games) - len(games)
+    positions_all = load_positions()
     deep = load_deep()
     very_deep = load_very_deep()
     chessdb = load_chessdb()
-    print(f"[load] {len(games)} games, {len(positions)} positions, "
-          f"{len(deep)} deep, {len(very_deep)} very-deep, {len(chessdb)} chessdb",
+    print(f"[load] {len(all_games)} games on disk ({excluded} excluded from public site), "
+          f"{len(positions_all)} positions, {len(deep)} deep, {len(very_deep)} very-deep, "
+          f"{len(chessdb)} chessdb", file=sys.stderr)
+
+    # Restrict positions_view.js to FENs actually referenced by the public games
+    # so docs/positions_view.js stays under GitHub's 100 MB hard limit.
+    needed_fens = {
+        p['fen'] for g in games for v in g['variations'] for p in v if p.get('fen')
+    }
+    positions = {f: e for f, e in positions_all.items() if f in needed_fens}
+    print(f"[filter] {len(positions)} positions referenced by {len(games)} public games",
           file=sys.stderr)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -1358,11 +1380,15 @@ def main():
 
     # Mirror to /docs/ so GitHub Pages can serve it (Pages source dropdown only
     # lets you pick `/(root)` or `/docs`, not arbitrary subfolders).
+    # Skip the data/ folder — those .json files (games.json, chessdb_cache.json,
+    # broken_annotes.json) are pipeline-internal; the browser only loads
+    # positions_view.js + the per-game HTML pages.
     docs_dir = REPO / "docs"
     if docs_dir.exists():
         shutil.rmtree(docs_dir)
-    shutil.copytree(OUT_DIR, docs_dir)
-    print(f"[mirror] {OUT_DIR} → {docs_dir}  (for GitHub Pages)", file=sys.stderr)
+    shutil.copytree(OUT_DIR, docs_dir, ignore=shutil.ignore_patterns('data'))
+    print(f"[mirror] {OUT_DIR} → {docs_dir}  (data/ excluded — for GitHub Pages)",
+          file=sys.stderr)
 
     print(f"[done] open {OUT_DIR / 'index.html'} in browser", file=sys.stderr)
 
