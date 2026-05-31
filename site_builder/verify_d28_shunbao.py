@@ -25,7 +25,11 @@ EXE = REPO / "engine" / "Windows" / "pikafish-avx2.exe"
 OUT_DIR = REPO / "output" / "site"
 VERY_DEEP_JS = OUT_DIR / "positions_very_deep.js"
 
-TARGET_REL_KEYWORDS = ('順包直車3兵對橫車邊馬', '順包兩頭蛇對雙橫車', '牛頭滾')
+# Substring-match against each game's rel_path. '順包\\' picks up every file
+# under the 順包/ subdirectory (2026-05-31: 5 files — 順包兩頭蛇對雙橫車,
+# 順包直車3兵對橫車邊馬, 順包直車3兵對橫車3卒, 順包直車3兵對橫車4進5,
+# 順砲橫車對直車). 牛頭滾 lives at the top level.
+TARGET_REL_KEYWORDS = ('順包\\', '牛頭滾')
 SKIP_OPENING_PLIES = 15  # mirror enrich_decisive / verify_traps / render_site
 
 

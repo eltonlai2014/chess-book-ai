@@ -28,7 +28,9 @@ OUT_DIR = REPO / "output" / "site"
 VERY_DEEP_JS = OUT_DIR / "positions_very_deep.js"
 D32_JS = OUT_DIR / "positions_d32.js"
 
-TARGET_REL_KEYWORDS = ('順包直車3兵對橫車邊馬', '順包兩頭蛇對雙橫車')
+# Substring-match against rel_path. '順包\\' covers every file under 順包/
+# (2026-05-31: 5 files). Kept in sync with verify_d28_shunbao.py.
+TARGET_REL_KEYWORDS = ('順包\\',)
 
 
 def _load_window_cache(path, var_name):
