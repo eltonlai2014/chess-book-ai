@@ -24,11 +24,11 @@ unique FEN by depth（`output/site/positions*.js` + `output/site/data/chessdb_ca
 
 | Depth | 來源檔 | 範圍 / 用途 | Rows |
 |---|---|---|---:|
-| 12 | `positions.js` | 全庫 ply 0..end shallow eval（build_data 寫） | 89,832 |
-| 22 | `positions_deep.js` | `enrich_decisive` 對 `|shallow_score| > 300` 變例 | 15,051 |
-| 28 | `positions_very_deep.js` | trap 驗證 + 指定書全 ply≥15 sweep | 8,117 |
-| 32 | `positions_d32.js` | 順包/ d28-already-done FEN 的 cross-check | 2,224 (d28 擴張後候選 ~2,273) |
-| chessdb | `data/chessdb_cache.json` | 雲端社群勝率 (ply 10–25) | 7,630 |
+| 12 | `positions.js` | 全部 864 局棋譜、每一步的淺算分數（基線資料） | 89,832 |
+| 22 | `positions_deep.js` | 只挑「最後一步淺算分數絕對值 > 300cp」（=一方明顯贏定）的變例，整條變例每一步再深算一次，找出分數真正翻盤的那一步 | 15,051 |
+| 28 | `positions_very_deep.js` | (a) 已偵測 trap 的前後兩格再深算驗證；(b) 順包/ 5 本 + 牛頭滾 2 本全部 ply≥15 的局面全掃 | 8,117 |
+| 32 | `positions_d32.js` | 順包/ 中 d28 已跑過的 FEN，再加深到 32 做交叉驗證（看 d28 結論穩不穩） | 2,224 |
+| chessdb | `data/chessdb_cache.json` | 雲端 chessdb.cn 社群勝率資料，只查 ply 10–25 區間（雲端覆蓋密的範圍） | 7,630 |
 
 `positions.db` 重新 migrate 後總 41.5 MB（gitignored，每台機器各自 build）。
 
