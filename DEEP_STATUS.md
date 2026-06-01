@@ -2,7 +2,7 @@
 
 > 棋譜庫覆蓋率 + 深度計算進度的單一事實來源。更新規則見最後一節。
 >
-> Last updated: 2026-05-31
+> Last updated: 2026-06-01
 
 ## 一、棋譜庫總覽
 
@@ -26,8 +26,8 @@ unique FEN by depth（`output/site/positions*.js` + `output/site/data/chessdb_ca
 |---|---|---|---:|
 | 12 | `positions.js` | 全庫 ply 0..end shallow eval（build_data 寫） | 89,832 |
 | 22 | `positions_deep.js` | `enrich_decisive` 對 `|shallow_score| > 300` 變例 | 15,051 |
-| 28 | `positions_very_deep.js` | trap 驗證 + 指定書全 ply≥15 sweep | ~7,084 (sweeping → ~8,067) |
-| 32 | `positions_d32.js` | 順包/ d28-already-done FEN 的 cross-check | 2,224 |
+| 28 | `positions_very_deep.js` | trap 驗證 + 指定書全 ply≥15 sweep | 8,117 |
+| 32 | `positions_d32.js` | 順包/ d28-already-done FEN 的 cross-check | 2,224 (d28 擴張後候選 ~2,273) |
 | chessdb | `data/chessdb_cache.json` | 雲端社群勝率 (ply 10–25) | 7,630 |
 
 `positions.db` 重新 migrate 後總 41.5 MB（gitignored，每台機器各自 build）。
@@ -51,20 +51,20 @@ d28 不是要做全庫 89832 FEN（CPU 太貴），而是**兩條互補路線**�
 
 `TARGET_REL_KEYWORDS = ('順包\\', '牛頭滾')` (substring match on rel_path)
 
-當前涵蓋（2026-05-31）：
+當前涵蓋（2026-06-01）：
 
 | 檔案 | ply≥15 FEN | d28 done | 狀態 |
 |---|---:|---:|---|
 | 順包/順包兩頭蛇對雙橫車 | 1,082 | 1,082 | ✅ 100% |
 | 順包/順包直車3兵對橫車邊馬 | 1,142 | 1,142 | ✅ 100% |
-| 順包/順包直車3兵對橫車3卒 | ~480 | sweeping | 🟡 in progress |
-| 順包/順包直車3兵對橫車4進5 | ~140 | sweeping | 🟡 in progress |
-| 順包/順砲橫車對直車 | ~250 | sweeping | 🟡 in progress |
+| 順包/順包直車3兵對橫車3卒 | ~480 | ~480 | ✅ 100% |
+| 順包/順包直車3兵對橫車4進5 | ~140 | ~140 | ✅ 100% |
+| 順包/順砲橫車對直車 | ~250 | ~250 | ✅ 100% |
 | 牛頭滾 | ~80 | ~80 | ✅ 100% |
-| 牛頭滾_意大利包 | ~85 | sweeping | 🟡 in progress |
-| **合計** | **7,256** | **6,273** | **86.5%** → 100% 跑完後 |
+| 牛頭滾_意大利包 | ~85 | ~85 | ✅ 100% |
+| **合計** | **7,256** | **7,256** | **✅ 100%** |
 
-跑完後合計 7,256 unique FEN（含跨書共享）。
+2026-06-01 03:06 掃完。新浮現 8 個 trap（642 → 650）。
 
 ### 3.3 全庫其他書
 
@@ -97,11 +97,9 @@ Schtask 防電源管理：`WakeToRun=True`, `DisallowStartIfOnBatteries=False`, 
 
 ## 六、進行中
 
-| 時間 | 動作 | PID | 預計完成 |
-|---|---|---:|---|
-| 2026-05-31 22:57 起 | 手動 verify_d28_shunbao（新 TARGET，983 new FEN） | wrapper 36084 / pikafish 4312 | ~2 小時（觀察前 30 FEN：~8 FEN/分鐘） |
+無。最近一次 sweep：2026-05-31 22:57 → 2026-06-01 03:06（4h09m），983 new d28 FEN，commit `8f8bb2d`。
 
-跑完會自動 render + commit + push（包括補偵測到的新 trap）+ migrate_to_sqlite。
+下一場由 schtask `ChessBookVerifyD28Shunbao`（22:30 daily）自然觸發；目前 TARGET 全 100%，下次跑會 immediately `nothing to do` 收工。
 
 ## 七、更新本文件
 
