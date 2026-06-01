@@ -1,16 +1,24 @@
-"""Deep-evaluate every ply in variations that END in a decisive position.
+"""Deep-evaluate plies in public games (non-中貴棋譜), up to the first ply
+where the shallow score becomes decisive (|d12| > DECISIVE_CUTOFF).
 
-Logic: if the final ply's shallow score is large (|score| > THRESHOLD), the
-side that ended up losing made a mistake somewhere. Deep-evaluating every
-position in such a variation lets us find the exact ply where the score
-swung — that's where the human-trap lies.
+Policy (2026-06-01):
+  - Skip games whose rel_path matches PUBLIC_EXCLUDE_KEYWORDS — those get d12
+    only (中貴棋譜/ corpus is real-game collections, kept local for the editor
+    but not deep-evaluated).
+  - For each remaining variation, walk plies and include each (subject to
+    SKIP_OPENING_PLIES). Once |d12 score| > DECISIVE_CUTOFF at some ply N,
+    include ply N (so trap detection at ply N-1 still has both neighbours)
+    then stop the walk for this variation.
+  - PV stored truncated to PV_KEEP entries — d22 PV is only trustworthy for
+    the first ~10 plies (master's empirical observation).
 
 Usage:
-  py site_builder/enrich_decisive.py --depth 22 --threshold 300
-  py site_builder/enrich_decisive.py --depth 22 --threshold 300 --dry-run
+  py site_builder/enrich_decisive.py --depth 22
+  py site_builder/enrich_decisive.py --depth 22 --dry-run
 """
 import argparse
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -28,65 +36,70 @@ POSITIONS_JS = OUT_DIR / "positions.js"
 DEEP_JS = OUT_DIR / "positions_deep.js"
 
 
-SKIP_OPENING_PLIES = 15  # plies 1..15 = opening theory; comparing book vs engine here is misframed (avoiding all engine-preferred moves makes it a different opening). Skip for compute savings AND noise reduction; UI applies same cutoff.
+SKIP_OPENING_PLIES = 15  # plies 1..15 = opening theory; comparing book vs engine here is misframed.
+PUBLIC_EXCLUDE_KEYWORDS = ('中貴棋譜',)  # mirror render_site.PUBLIC_EXCLUDE_KEYWORDS — these get d12 only
+DECISIVE_CUTOFF = 500  # |d12 score| > this → stop deepening further plies in the variation
+PV_KEEP = 10           # d22 PV is reliable for ~first 10 plies; rest is engine drift
 
 
-def find_decisive_variations(games, shallow, threshold):
-    """Return list of (game, vi, plies, final_score) for variations whose last
-    valid ply has |shallow score| > threshold."""
-    out = []
+def collect_fens_to_eval(games, shallow):
+    """Walk every public-game variation, include each ply ≥ SKIP_OPENING_PLIES,
+    stop when |d12 score| first exceeds DECISIVE_CUTOFF (inclusive of that ply
+    so the prior trap pair stays evaluable)."""
+    out = set()
     for g in games:
-        for vi, plies in enumerate(g['variations']):
-            # Find last ply with cached score
-            final_score = None
-            for p in reversed(plies):
+        rel = g.get('rel_path', '') or ''
+        if any(k in rel for k in PUBLIC_EXCLUDE_KEYWORDS):
+            continue
+        for plies in g['variations']:
+            for pi, p in enumerate(plies):
+                if pi < SKIP_OPENING_PLIES:
+                    # Still need to honour the decisive cutoff even in the opening prefix,
+                    # so peek at the score and break early if already past it.
+                    fen = p.get('fen')
+                    if fen and fen in shallow:
+                        sc = score_cp(shallow[fen])
+                        if sc is not None and abs(sc) > DECISIVE_CUTOFF:
+                            break
+                    continue
                 fen = p.get('fen')
-                if fen and fen in shallow:
-                    sc = score_cp(shallow[fen])
-                    if sc is not None:
-                        final_score = sc
-                        break
-            if final_score is None:
-                continue
-            if abs(final_score) > threshold:
-                out.append((g, vi, plies, final_score))
+                if not fen or fen not in shallow:
+                    continue
+                out.add(fen)
+                sc = score_cp(shallow[fen])
+                if sc is not None and abs(sc) > DECISIVE_CUTOFF:
+                    break
     return out
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--depth', type=int, default=22)
-    ap.add_argument('--threshold', type=int, default=300)
     ap.add_argument('--threads', type=int, default=4,
                     help='Pikafish search threads (i7-8700 has 6 cores; 4 leaves room for other work)')
     ap.add_argument('--hash-mb', type=int, default=512,
                     help='Pikafish transposition table size in MB (default 16 is way too small)')
     ap.add_argument('--dry-run', action='store_true')
+    ap.add_argument('--max-hours', type=float, default=None,
+                    help='Self-deadline — save and exit cleanly when reached')
+    ap.add_argument('--no-post', action='store_true',
+                    help='Skip the auto render + migrate + commit + push at end')
     args = ap.parse_args()
 
     games = json.loads(GAMES_JSON.read_text(encoding='utf-8'))
     shallow = load_positions(POSITIONS_JS)
     deep = load_positions(DEEP_JS)
     print(f"[load] shallow={len(shallow)}  deep={len(deep)}", file=sys.stderr)
+    n_public = sum(1 for g in games
+                   if not any(k in (g.get('rel_path') or '') for k in PUBLIC_EXCLUDE_KEYWORDS))
+    n_excl = len(games) - n_public
+    print(f"[scope] {n_public} public games / {n_excl} excluded (中貴棋譜)", file=sys.stderr)
 
-    decisive = find_decisive_variations(games, shallow, args.threshold)
-    fens_in_variations = set()
-    for _, _, plies, _ in decisive:
-        # Skip opening theory — deep eval at pi<SKIP_OPENING_PLIES rarely reveals
-        # real traps, mostly just depth artefacts. Saves a lot of compute and
-        # matches the UI which won't flag those plies anyway.
-        for pi, p in enumerate(plies):
-            if pi < SKIP_OPENING_PLIES:
-                continue
-            fen = p.get('fen')
-            if fen and fen in shallow:
-                fens_in_variations.add(fen)
-
-    todo = [f for f in fens_in_variations
+    candidates = collect_fens_to_eval(games, shallow)
+    todo = [f for f in sorted(candidates)
             if f not in deep or deep[f].get('depth', 0) < args.depth]
-    print(f"[scan] decisive variations: {len(decisive)} (|final|>{args.threshold})",
-          file=sys.stderr)
-    print(f"[scan] unique FENs in those variations: {len(fens_in_variations)}",
+    print(f"[scan] candidate FENs (public, ply≥{SKIP_OPENING_PLIES}, "
+          f"|d12|≤{DECISIVE_CUTOFF} or decisive boundary): {len(candidates)}",
           file=sys.stderr)
     print(f"[plan] need deep eval at depth {args.depth}: {len(todo)} FENs",
           file=sys.stderr)
@@ -106,14 +119,22 @@ def main():
           file=sys.stderr)
 
     t0 = time.time()
+    deadline = (time.time() + args.max_hours * 3600) if args.max_hours else None
+    hit_deadline = False
     try:
         for idx, fen in enumerate(todo, 1):
+            if deadline and time.time() >= deadline:
+                print(f"[deadline] reached at FEN {idx}/{len(todo)} — saving and exiting",
+                      file=sys.stderr)
+                save_deep(DEEP_JS, deep)
+                hit_deadline = True
+                break
             act = eng.go(fen, args.depth)
             deep[fen] = {
                 'best_iccs': act.get('move'),
                 'score': act.get('score') if isinstance(act.get('score'), int) else None,
                 'mate': act.get('mate'),
-                'pv': act.get('pv') or [],
+                'pv': (act.get('pv') or [])[:PV_KEEP],
                 'depth': args.depth,
             }
             sh = shallow.get(fen, {})
@@ -141,6 +162,39 @@ def main():
 
     save_deep(DEEP_JS, deep)
     print(f"[write] {DEEP_JS} ({len(deep)} positions total)", file=sys.stderr)
+
+    if not args.no_post:
+        post_render_and_push(hit_deadline)
+
+
+def post_render_and_push(partial: bool):
+    """Refresh public site, rebuild SQLite eval DB, commit + push."""
+    print("[post] render_site.py", flush=True)
+    subprocess.run([sys.executable, str(REPO / 'site_builder' / 'render_site.py')],
+                   check=True, cwd=str(REPO))
+    print("[post] migrate_to_sqlite.py", flush=True)
+    subprocess.run([sys.executable, str(REPO / 'site_builder' / 'migrate_to_sqlite.py')],
+                   check=True, cwd=str(REPO))
+    print("[post] git add", flush=True)
+    subprocess.run(['git', 'add', 'docs/', 'output/site/'],
+                   check=True, cwd=str(REPO))
+    msg = (
+        "Enrich d22 nightly progress — public 42 books\n"
+        "\n"
+        "Resumable sweep over public-game positions (中貴棋譜/ excluded).\n"
+        "Variation walk stops at first |d12|>500 ply per master policy.\n"
+        + ("Partial batch (hit --max-hours deadline).\n" if partial
+           else "Full pass complete for this corpus snapshot.\n")
+        + "\n"
+        "Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
+    )
+    rc = subprocess.run(['git', 'commit', '-m', msg], cwd=str(REPO))
+    if rc.returncode != 0:
+        print("[post] nothing to commit, skipping push", flush=True)
+        return
+    print("[post] git push", flush=True)
+    subprocess.run(['git', 'push'], check=True, cwd=str(REPO))
+    print("[post] done", flush=True)
 
 
 if __name__ == '__main__':

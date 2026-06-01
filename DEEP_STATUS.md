@@ -24,11 +24,16 @@ unique FEN by depth（`output/site/positions*.js` + `output/site/data/chessdb_ca
 
 | Depth | 來源檔 | 範圍 / 用途 | Rows |
 |---|---|---|---:|
-| 12 | `positions.js` | 全部 864 局棋譜、每一步的淺算分數（基線資料） | 89,832 |
-| 22 | `positions_deep.js` | 只挑「最後一步淺算分數絕對值 > 300cp」（=一方明顯贏定）的變例，整條變例每一步再深算一次，找出分數真正翻盤的那一步 | 15,051 |
-| 28 | `positions_very_deep.js` | (a) 已偵測 trap 的前後兩格再深算驗證；(b) 順包/ 5 本 + 牛頭滾 2 本全部 ply≥15 的局面全掃 | 8,117 |
+| 12 | `positions.js` | 全部 864 局棋譜、每一步的淺算分數（基線資料） | 90,217 |
+| 22 | `positions_deep.js` | 公開 42 本書（不含中貴）全 ply≥15 局面，跑到 \|d12\| 首次 > 500cp 那步為止（決定點之後不再深算） | 15,051 (sweeping → ~37,000) |
+| 28 | `positions_very_deep.js` | (a) 已偵測 trap 的前後兩格再深算驗證；(b) 順包/ 5 本 + 牛頭滾 2 本 ply≥15 全掃，同樣套 \|d12\|>500 截斷 | 8,117 |
 | 32 | `positions_d32.js` | 順包/ 中 d28 已跑過的 FEN，再加深到 32 做交叉驗證（看 d28 結論穩不穩） | 2,224 |
 | chessdb | `data/chessdb_cache.json` | 雲端 chessdb.cn 社群勝率資料，只查 ply 10–25 區間（雲端覆蓋密的範圍） | 7,630 |
+
+**深算共通政策（2026-06-01 起）：**
+- 中貴棋譜/（822 本實戰書）只跑 d12，d22/d28/d32 全部跳過
+- 變例走到 |d12 score| > 500cp 那一步為止（含該步），後續局面不再深算 — 局勢已決，再算無分析價值
+- d22 PV 只存前 10 步（Pikafish d22 PV 約前 10 步精準，後面飄）
 
 `positions.db` 重新 migrate 後總 41.5 MB（gitignored，每台機器各自 build）。
 
@@ -87,19 +92,22 @@ d28 sweep 跑完後 d32 候選會擴張到 ~2,273（新 49 FEN）+ 還會隨後�
 | schtask | 腳本 | 排程 | 動作 |
 |---|---|---|---|
 | `ChessBookNightlyBuild` | `nightly_build.ps1` | 排程未確認 | 重 render 全站 + push |
-| `ChessBookVerifyDepth28` | `verify_traps.py` | 21:00 daily | 對 642 traps × 2 跑 d28 |
-| `ChessBookVerifyD28Shunbao` | `verify_d28_shunbao.py` | 22:30 daily | 順包/ + 牛頭滾× 2 全 ply≥15 d28 |
+| `ChessBookVerifyDepth28` | `verify_traps.py` | 21:00 daily | 對 650 traps × 2 跑 d28 |
+| `ChessBookEnrichD22` | `run_enrich_d22.ps1` | 22:30 daily, `--max-hours 8` | **公開 42 本 d22 全掃**（2026-06-01 啟，~5-7 晚完成 22,395 todo） |
+| `ChessBookVerifyD28Shunbao` | `verify_d28_shunbao.py` | 22:30 daily（**已暫停**） | 順包/ + 牛頭滾 全 ply≥15 d28，d22 sweep 完後再啟用 |
 | `ChessBookVerifyD32` | `verify_d32.py` | 21:00 daily | 順包/ d28 entries 的 d32 cross-check |
 
-所有腳本：resumable, `--max-hours 8` (d32) / `--max-hours 9` (d28) 自我截止, 跑完自動 `render_site.py` + `migrate_to_sqlite.py` + commit + push。
+所有腳本：resumable, `--max-hours 8` 自我截止，跑完自動 `render_site.py` + `migrate_to_sqlite.py` + commit + push。
 
 Schtask 防電源管理：`WakeToRun=True`, `DisallowStartIfOnBatteries=False`, `StopIfGoingOnBatteries=False`（2026-05-29 修），wrapper 內 `powercfg` 把 standby/monitor/hibernate timeout 全設 0。
 
 ## 六、進行中
 
-無。最近一次 sweep：2026-05-31 22:57 → 2026-06-01 03:06（4h09m），983 new d28 FEN，commit `8f8bb2d`。
+| 任務 | 狀態 | 預計完成 |
+|---|---|---|
+| ChessBookEnrichD22（22:30 daily, 8h/晚） | 今晚啟動，22,395 d22 todo | ~5-7 晚 |
 
-下一場由 schtask `ChessBookVerifyD28Shunbao`（22:30 daily）自然觸發；目前 TARGET 全 100%，下次跑會 immediately `nothing to do` 收工。
+期間 ChessBookVerifyD28Shunbao 已暫停（避免 22:30 撞）。d22 sweep 完後再 `schtasks /Change /TN ChessBookVerifyD28Shunbao /ENABLE` 恢復。
 
 ## 七、更新本文件
 

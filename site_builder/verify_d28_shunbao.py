@@ -24,6 +24,7 @@ REPO = Path(__file__).resolve().parent.parent
 EXE = REPO / "engine" / "Windows" / "pikafish-avx2.exe"
 OUT_DIR = REPO / "output" / "site"
 VERY_DEEP_JS = OUT_DIR / "positions_very_deep.js"
+POSITIONS_JS = OUT_DIR / "positions.js"
 
 # Substring-match against each game's rel_path. '順包\\' picks up every file
 # under the 順包/ subdirectory (2026-05-31: 5 files — 順包兩頭蛇對雙橫車,
@@ -31,6 +32,7 @@ VERY_DEEP_JS = OUT_DIR / "positions_very_deep.js"
 # 順砲橫車對直車). 牛頭滾 lives at the top level.
 TARGET_REL_KEYWORDS = ('順包\\', '牛頭滾')
 SKIP_OPENING_PLIES = 15  # mirror enrich_decisive / verify_traps / render_site
+DECISIVE_CUTOFF = 500    # mirror enrich_decisive — stop d28 sweep past first |d12|>500 ply
 
 
 def _load(path, var):
@@ -46,9 +48,25 @@ def _save(path, var, data):
     path.write_text(f"window.{var} = {payload};\n", encoding='utf-8')
 
 
+def _load_shallow():
+    m = re.search(r'window\.POSITIONS\s*=\s*(\{.*\});\s*$',
+                  POSITIONS_JS.read_text(encoding='utf-8'), re.DOTALL)
+    return json.loads(m.group(1)) if m else {}
+
+
+def _score_cp(entry):
+    if not entry:
+        return None
+    s = entry.get('score')
+    return s if isinstance(s, int) else None
+
+
 def collect_target_fens():
-    """All ply-≥15 unique FENs that live in the two 順包 books."""
+    """Unique FENs in target books, ply≥15, walking each variation up to (and
+    including) the first ply where |d12 score| > DECISIVE_CUTOFF — past that,
+    further plies are skipped (master policy: 分數明顯大於 500 的後續不必跑深)."""
     games = json.loads((OUT_DIR / 'data' / 'games.json').read_text(encoding='utf-8'))
+    shallow = _load_shallow()
     out = set()
     for g in games:
         rel = g.get('rel_path', '') or ''
@@ -57,8 +75,13 @@ def collect_target_fens():
         for plies in g['variations']:
             for pi, p in enumerate(plies):
                 fen = p.get('fen')
-                if fen and pi >= SKIP_OPENING_PLIES:
+                if not fen:
+                    continue
+                sc = _score_cp(shallow.get(fen))
+                if pi >= SKIP_OPENING_PLIES:
                     out.add(fen)
+                if sc is not None and abs(sc) > DECISIVE_CUTOFF:
+                    break
     return sorted(out)
 
 
