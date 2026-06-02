@@ -723,6 +723,111 @@ function drawBoard(svg, fen, bookMove, engineMove) {
       }
     }
   }
+
+  // Branch-hint arrows: when the rendered position has >=2 book continuations,
+  // fan a numbered arrow out to each. Drawn last so they sit above the pieces.
+  drawBranchArrows(svg, fen);
+}
+
+// ---------- branch-hint arrows ----------
+// Ported from the editor (chess-book-editor). When the position on the board
+// has >=2 continuations in the book tree, fan a numbered green arrow out to
+// each (1 = main line), in the order they appear in the tree. Semantics match
+// the editor: arrows always originate from the position currently rendered, so
+// every arrow tail sits on a real piece. A dark casing under each coloured
+// arrow keeps it legible on wood / stone / dark slate alike. SVG has no
+// z-index — paint order wins — so every number badge is laid down in a final
+// pass, guaranteeing no overlapping arrow line can cover another's number.
+//
+// Branch green is retuned per board style so it belongs to the ground it sits
+// on: deepen on the light stone field, brighten on the dark gilded slate.
+const BRANCH_ARROW = {
+  traditional: "#0c8f63",
+  stone:       "#0a8c5e",
+  gilded:      "#34c98c",
+};
+const BRANCH_ARROW_WIDTH = 5.5;     // rank is carried by the badge, not the width
+const BRANCH_ARROW_OPACITY = 0.6;   // translucent so pieces / board lines show through
+
+function branchArrowColor() {
+  return BRANCH_ARROW[document.documentElement.dataset.board] || BRANCH_ARROW.traditional;
+}
+
+// One arrow: a dark casing pass, then the coloured pass on top. screenX/Y read
+// CURRENT_REDP (latched by drawBoard) so the arrow honours the active perspective.
+function boardArrow(svg, iccs, color, width, opacity) {
+  const c = iccsToCoord(iccs);
+  if (!c) return;
+  const fx = screenX(c.from.col), fy = screenY(c.from.row);
+  const tx = screenX(c.to.col),   ty = screenY(c.to.row);
+  const dx = tx - fx, dy = ty - fy;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  const px = -uy, py = ux;                       // perpendicular for arrowhead corners
+  const headLen = width * 2.3, headHalf = width * 1.5;
+  const sx = fx + ux * 18, sy = fy + uy * 18;    // start just outside the source piece
+  const ex = tx, ey = ty;                        // tip lands on the destination intersection
+  const pass = (col, lw, hl, hh, op) => {
+    const bx = ex - ux * hl, by = ey - uy * hl;  // arrowhead base centre
+    el("line", {
+      x1: sx, y1: sy, x2: bx, y2: by,
+      stroke: col, "stroke-width": lw, "stroke-linecap": "round",
+      "stroke-opacity": op, "pointer-events": "none",
+    }, svg);
+    el("polygon", {
+      points: `${ex},${ey} ${bx + px * hh},${by + py * hh} ${bx - px * hh},${by - py * hh}`,
+      fill: col, "fill-opacity": op, "pointer-events": "none",
+    }, svg);
+  };
+  pass("rgba(20,16,10,0.45)", width + 3, headLen + 2.5, headHalf + 2, 0.45);
+  pass(color, width, headLen, headHalf, opacity);
+}
+
+// Numbered badge beside an arrowhead. Collinear branches that land on the same
+// tip would stack their badges on one spot, so same-tip repeats step back along
+// the arrow via `nudge`.
+function boardArrowBadge(svg, iccs, label, color, nudge) {
+  const c = iccsToCoord(iccs);
+  if (!c) return;
+  const fx = screenX(c.from.col), fy = screenY(c.from.row);
+  const tx = screenX(c.to.col),   ty = screenY(c.to.row);
+  const dx = tx - fx, dy = ty - fy;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  const px = -uy, py = ux;
+  const back = 13 + (nudge || 0), off = 15;
+  const mx = tx - ux * back + px * off, my = ty - uy * back + py * off;
+  el("circle", {
+    cx: mx, cy: my, r: 9.5, fill: color,
+    stroke: "#fff", "stroke-width": 1.5, "pointer-events": "none",
+  }, svg);
+  const t = el("text", {
+    x: mx, y: my + 4, "text-anchor": "middle",
+    "font-size": 12.5, "font-weight": 700, fill: "#fff", "pointer-events": "none",
+  }, svg);
+  t.textContent = label;
+}
+
+// `fen` is exactly the position drawBoard just rendered, so ALTS_BY_FEN[fen]
+// are its continuations and every arrow origin sits on a real piece. Lines are
+// drawn first, numbers deferred to a final pass so no line can cover a badge.
+function drawBranchArrows(svg, fen) {
+  if (typeof ALTS_BY_FEN === "undefined" || !fen) return;
+  const conts = ALTS_BY_FEN[fen] || [];
+  if (conts.length < 2) return;
+  const color = branchArrowColor();
+  const badges = [];
+  const seen = new Map();   // dedupe branches landing on the same destination tip
+  conts.forEach((ch, i) => {
+    if (!ch.iccs) return;
+    boardArrow(svg, ch.iccs, color, BRANCH_ARROW_WIDTH, BRANCH_ARROW_OPACITY);
+    const c = iccsToCoord(ch.iccs);
+    if (!c) return;
+    const key = c.to.col + "," + c.to.row;
+    const k = seen.get(key) || 0; seen.set(key, k + 1);
+    badges.push({ iccs: ch.iccs, label: String(i + 1), nudge: k * 19 });
+  });
+  badges.forEach((b) => boardArrowBadge(svg, b.iccs, b.label, color, b.nudge));
 }
 
 // Re-draw the board at the current STATE using whatever board style is now
