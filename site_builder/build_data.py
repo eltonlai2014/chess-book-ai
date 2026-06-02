@@ -276,16 +276,52 @@ def save_positions(path: Path, positions: dict):
     path.write_text(f"window.POSITIONS = {payload};\n", encoding='utf-8')
 
 
-def evaluate(fens, depth, existing, threads=1, hash_mb=16):
-    """Run engine on every FEN not in `existing`. Return merged dict.
+def collect_fens_dfs(games):
+    """Walk every game's variations in order, emit FENs in first-seen order
+    (DFS-like preorder per game). Replaces the old unordered `set` collection
+    which destroyed TT locality (see D12_TT_SWEEP.md):
 
-    Uses CleanUciEngine (single-threaded synchronous driver) instead of
-    cchess.UciEngine — the latter has a stdout-reader race that corrupted
-    ~85% of depth-22 evals before we caught it. Shallow depth-12 is less
-    affected (less search time = less interleaving) but using the clean
-    driver everywhere eliminates the class of bug entirely."""
-    todo = [f for f in fens if f not in existing]
-    print(f"  positions: {len(fens)} unique, {len(todo)} new, {len(fens) - len(todo)} cached", file=sys.stderr)
+    - Within a game: variation 0 (main line) walks linearly first, then
+      variation 1, etc. cchess emits variations in branch-order, so siblings
+      of a node tend to appear right after their parent's deepest descendant.
+    - Across games: one game's FENs all complete before the next game starts,
+      so shared opening positions get TT-warmed by the first game and then
+      reused (cache hit, skipped) for subsequent ones.
+
+    Global first-seen dedup preserves DFS locality — earlier appearances win,
+    and the resulting list is fed to the engine in that exact order.
+    """
+    seen = set()
+    out = []
+    for g in games:
+        for plies in g['variations']:
+            for p in plies:
+                fen = p.get('fen')
+                if fen and fen not in seen:
+                    seen.add(fen)
+                    out.append(fen)
+    return out
+
+
+def evaluate(ordered_fens, depth, existing, threads=1, hash_mb=1024,
+             save_path=None, checkpoint_every=50):
+    """Run Pikafish at `depth` on every FEN in `ordered_fens` not already in
+    `existing`. The order of `ordered_fens` is preserved (DFS preorder from
+    collect_fens_dfs) so TT entries from parent positions are still hot when
+    we hit their children/siblings — the whole point of the rewrite.
+
+    TT is shared across the entire run: no `ucinewgame` between FENs. With
+    Hash=1024MB the warm entries actually survive long enough to be reused.
+
+    Stored `depth` = engine-reported `info_depth` (not the requested depth);
+    when search ran longer due to extensions, that's the real depth we got.
+
+    Uses CleanUciEngine (single-threaded synchronous driver) — cchess.UciEngine
+    has a stdout-reader race that corrupted ~85% of depth-22 evals."""
+    todo = [f for f in ordered_fens if f not in existing]
+    n_cached = len(ordered_fens) - len(todo)
+    print(f"  positions: {len(ordered_fens)} unique, {len(todo)} new, {n_cached} cached "
+          f"(DFS order, Hash={hash_mb}MB, TT not cleared)", file=sys.stderr)
     if not todo:
         return existing
 
@@ -304,7 +340,7 @@ def evaluate(fens, depth, existing, threads=1, hash_mb=16):
                 'score': act.get('score') if isinstance(act.get('score'), int) else None,
                 'mate': act.get('mate'),
                 'pv': (act.get('pv') or [])[:8],
-                'depth': depth,
+                'depth': act.get('depth') or depth,
             }
             results[fen] = entry
             if idx % 10 == 0 or idx == len(todo):
@@ -312,9 +348,8 @@ def evaluate(fens, depth, existing, threads=1, hash_mb=16):
                 rate = idx / elapsed if elapsed > 0 else 0
                 eta = (len(todo) - idx) / rate if rate > 0 else 0
                 print(f"  [{idx}/{len(todo)}] {elapsed:.1f}s ({rate:.1f}/s) eta {eta:.0f}s", file=sys.stderr)
-            # Periodic checkpoint so a crash near the end doesn't lose hours
-            if idx % 50 == 0:
-                save_positions(POSITIONS_JS, results)
+            if save_path and idx % checkpoint_every == 0:
+                save_positions(save_path, results)
     finally:
         try:
             eng._send('quit')
@@ -327,13 +362,20 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('-d', '--depth', type=int, default=14)
     ap.add_argument('--threads', type=int, default=1, help='Pikafish Threads option (default 1 to keep CPU free)')
-    ap.add_argument('--hash-mb', type=int, default=16, help='Pikafish Hash size in MB')
+    ap.add_argument('--hash-mb', type=int, default=1024,
+                    help='Pikafish Hash MB. Default 1024 — needs to be large enough that warm '
+                         'TT entries survive until siblings of the originating position are evaluated. '
+                         '16 MB (Pikafish default) gave zero TT reuse; see D12_TT_SWEEP.md.')
     ap.add_argument('--limit', type=int, default=None, help='Process only first N files (smoke test)')
     ap.add_argument('--src', default=str(SRC_DIR))
     ap.add_argument('--scan-only', action='store_true',
                     help='Write games.json + report FEN counts, skip Pikafish evaluation')
     ap.add_argument('--no-migrate', action='store_true',
                     help='Skip the post-build migrate_to_sqlite step')
+    ap.add_argument('--single-file', default=None,
+                    help='Substring-match against rel_path/file; build only that game(s) '
+                         'into a sidecar cache positions_single_test.js (no global mutation). '
+                         'Smoke-test new DFS evaluator before committing to a full re-eval.')
     args = ap.parse_args()
 
     src = Path(args.src)
@@ -343,25 +385,49 @@ def main():
 
     if args.limit:
         games = games[:args.limit]
-        fens = {p['fen'] for g in games for v in g['variations'] for p in v if p.get('fen')}
-        print(f"[limit] {len(games)} games, {len(fens)} FENs", file=sys.stderr)
+        print(f"[limit] {len(games)} games", file=sys.stderr)
+
+    if args.single_file:
+        sf = args.single_file
+        matched = [g for g in games
+                   if sf in (g.get('rel_path') or '') or sf in (g.get('file') or '')]
+        if not matched:
+            print(f"[single-file] no game matched '{sf}'", file=sys.stderr)
+            return
+        games = matched
+        print(f"[single-file] {len(games)} game(s) matched '{sf}' — "
+              f"writing to positions_single_test.js (no global cache mutation)",
+              file=sys.stderr)
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     games_path = DATA_DIR / 'games.json'
-    games_path.write_text(json.dumps(games, ensure_ascii=False, indent=1), encoding='utf-8')
-    print(f"[write] {games_path}", file=sys.stderr)
+    if not args.single_file:
+        games_path.write_text(json.dumps(games, ensure_ascii=False, indent=1), encoding='utf-8')
+        print(f"[write] {games_path}", file=sys.stderr)
 
-    existing = load_existing_positions(POSITIONS_JS)
-    print(f"[cache] {len(existing)} positions in {POSITIONS_JS.name}", file=sys.stderr)
+    out_js = POSITIONS_JS if not args.single_file else (OUT_DIR / 'positions_single_test.js')
+    existing = load_existing_positions(out_js)
+    print(f"[cache] {len(existing)} positions in {out_js.name}", file=sys.stderr)
+
+    ordered = collect_fens_dfs(games)
+    print(f"[order] DFS preorder: {len(ordered)} unique FENs", file=sys.stderr)
 
     if args.scan_only:
-        new_fens = len([f for f in fens if f not in existing])
-        print(f"[scan-only] {len(fens)} unique FENs, {new_fens} not yet in cache — skipping engine", file=sys.stderr)
+        new_fens = sum(1 for f in ordered if f not in existing)
+        print(f"[scan-only] {len(ordered)} unique FENs, {new_fens} not yet in cache — skipping engine",
+              file=sys.stderr)
         return
 
-    results = evaluate(fens, args.depth, existing, threads=args.threads, hash_mb=args.hash_mb)
-    save_positions(POSITIONS_JS, results)
-    print(f"[write] {POSITIONS_JS} ({len(results)} positions)", file=sys.stderr)
+    results = evaluate(ordered, args.depth, existing,
+                       threads=args.threads, hash_mb=args.hash_mb,
+                       save_path=out_js)
+    save_positions(out_js, results)
+    print(f"[write] {out_js} ({len(results)} positions)", file=sys.stderr)
+
+    if args.single_file:
+        print(f"[single-file] done. Inspect {out_js} and compare to current "
+              f"positions.js before approving full re-eval.", file=sys.stderr)
+        return
 
     if not args.no_migrate:
         print("[post] migrate_to_sqlite.py", file=sys.stderr)

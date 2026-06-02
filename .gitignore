@@ -19,6 +19,10 @@ output/positions.db-shm
 # site_builder/build_data.py --scan-only.
 output/site/data/games.json
 
+# Sidecar cache for build_data.py --single-file smoke tests of the new DFS
+# evaluator (see D12_TT_SWEEP.md). Regenerable; not for distribution.
+output/site/positions_single_test.js
+
 # Python
 __pycache__/
 *.pyc
