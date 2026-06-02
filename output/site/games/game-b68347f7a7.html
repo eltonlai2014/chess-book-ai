@@ -43,6 +43,23 @@
 <main class="game">
 <aside class="board-panel">
 <svg id="board" viewBox="0 0 540 600" xmlns="http://www.w3.org/2000/svg"></svg>
+<script>
+// Early-paint loading pill: self-contained, does NOT depend on board.js, so it
+// covers the ~25MB positions_view.js + board.js download window. board.js's
+// first drawBoard() clears the SVG and seamlessly takes over.
+(function () {
+  var NS = "http://www.w3.org/2000/svg";
+  var svg = document.getElementById("board");
+  if (!svg) return;
+  function mk(tag, attrs) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    svg.appendChild(e); return e;
+  }
+  mk("rect", { x: 160, y: 277, width: 220, height: 46, rx: 23, ry: 23, "class": "boardBusyPill" });
+  mk("text", { x: 270, y: 306, "text-anchor": "middle", "class": "boardBusyTxt" }).textContent = "棋譜載入中…";
+})();
+</script>
 <svg id="chart" viewBox="0 0 540 140" xmlns="http://www.w3.org/2000/svg"></svg>
 </aside>
 <section class="game-panel">

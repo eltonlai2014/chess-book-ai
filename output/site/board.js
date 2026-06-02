@@ -445,6 +445,23 @@ function drawMeanderFrame(svg, opts) {
 
 // ---------- board drawing (SVG) ----------
 
+// Loading pulse pill. drawBoard() clears the SVG on every redraw, so once the
+// real board is painted this pill vanishes with no manual teardown. Pass
+// pulse=false for a static (idle / load-failed) state. Mirrors the inline
+// early-paint pill in the game-page template (see render_site.py).
+function drawBoardLoading(svg, text, pulse = true) {
+  if (!svg) return;
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  const W = 540, H = 600, w = 220, h = 46;
+  el("rect", {
+    x: (W - w) / 2, y: (H - h) / 2, width: w, height: h, rx: 23, ry: 23,
+    class: "boardBusyPill" + (pulse ? "" : " static"),
+  }, svg);
+  el("text", {
+    x: W / 2, y: H / 2 + 6, "text-anchor": "middle", class: "boardBusyTxt",
+  }, svg).textContent = text;
+}
+
 function drawBoard(svg, fen, bookMove, engineMove) {
   // Latch perspective for this redraw so screenY (called many times below)
   // doesn't re-poll the checkbox each call.
@@ -1573,6 +1590,15 @@ function startDemo(mode) {
 function initGamePage(GAME) {
   STATE.GAME = GAME;
   SVG_BOARD = document.getElementById("board");
+  // Paint the loading pill, then yield one frame so the browser actually
+  // repaints before the synchronous heavy work below (hydrate/annotate/first
+  // drawBoard) blocks the main thread. Without the rAF the pill is overwritten
+  // before it ever paints — initGamePage runs start-to-finish in one tick.
+  drawBoardLoading(SVG_BOARD, "棋譜載入中…");
+  requestAnimationFrame(() => initGamePageHeavy(GAME));
+}
+
+function initGamePageHeavy(GAME) {
   SVG_CHART = document.getElementById("chart");
   STEP_INFO = document.getElementById("stepInfo");
   ANNOTE_BOX = document.getElementById("annoteBox");
