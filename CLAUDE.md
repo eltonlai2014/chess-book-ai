@@ -127,6 +127,7 @@ Three stages: XQF parse (`cchess.read_from_xqf` → `Game`), per-FEN dedup, Pika
 - All client-side, served via `<script src>` (no `fetch()`) so it works from `file://` too.
 - `applyIccs(fen, iccs)` is the in-browser xiangqi mover used to derive `fen_after` on demand for PV demos and tree-lookup hydration.
 - The "human trap" highlight (orange row + ⚠) and the ⑂ branch badge are computed in `annotateTable`. **Keep `SKIP_OPENING_PLIES` constant in sync with [`enrich_decisive.py`](site_builder/enrich_decisive.py), [`find_trap_plies.py`](site_builder/find_trap_plies.py), [`verify_traps.py`](site_builder/verify_traps.py), and [`render_site.py`](site_builder/render_site.py).**
+- **On-board branch-hint arrows** (`drawBranchArrows` at the end of `drawBoard`): when the rendered position has ≥2 book continuations, fans a numbered green arrow to each (1 = main line), reading `ALTS_BY_FEN[fen]` — the same lookup the ⑂ badge and 本步可選 panel use. Ported from chess-book-editor; semantics match (arrows always originate from the position on the board). Branch green is retuned per board style in the `BRANCH_ARROW` map. No live-engine PV arrows here (static site, no SSE).
 
 ### Engine binary + NNUE
 
