@@ -9,6 +9,7 @@ Output layout (everything under output/site/):
 """
 import json
 import re
+from datetime import date
 import sys
 import shutil
 from pathlib import Path
@@ -1295,6 +1296,46 @@ def render_index(games: list, n_positions: int, stats_by_file: dict,
     )
 
 
+def _count_window_entries(path: Path, var: str) -> int:
+    """Count entries in a `window.VAR = {...};` JS cache file."""
+    if not path.exists():
+        return 0
+    txt = path.read_text(encoding='utf-8')
+    m = re.search(rf'window\.{var}\s*=\s*(\{{.*\}});\s*$', txt, re.DOTALL)
+    if not m:
+        return 0
+    try:
+        return len(json.loads(m.group(1)))
+    except json.JSONDecodeError:
+        return 0
+
+
+def update_deep_status_md(rows: dict, n_traps: int) -> None:
+    """Sync the auto-tracked numbers in DEEP_STATUS.md. Only the cells wrapped
+    in `<!--auto-NAME-->...<!--/auto-NAME-->` get touched; all narrative around
+    them stays put. Run at end of every render so the doc tracks each commit."""
+    p = REPO / 'DEEP_STATUS.md'
+    if not p.exists():
+        return
+    md = p.read_text(encoding='utf-8')
+    replacements = {
+        'auto-date': date.today().isoformat(),
+        'auto-d12': f'{rows["d12"]:,}',
+        'auto-d22': f'{rows["d22"]:,}',
+        'auto-d28': f'{rows["d28"]:,}',
+        'auto-d32': f'{rows["d32"]:,}',
+        'auto-chessdb': f'{rows["chessdb"]:,}',
+        'auto-traps': str(n_traps),
+    }
+    for key, val in replacements.items():
+        md = re.sub(
+            rf'<!--{key}-->.*?<!--/{key}-->',
+            f'<!--{key}-->{val}<!--/{key}-->',
+            md, count=1, flags=re.DOTALL,
+        )
+    p.write_text(md, encoding='utf-8')
+
+
 def _enrich_is_current() -> bool:
     """True iff positions_view.js exists AND is newer than every source it
     derives from. Lets us skip the slow `[enrich]` step when only games.json
@@ -1412,6 +1453,22 @@ def main():
         shutil.rmtree(docs_dir)
     shutil.copytree(OUT_DIR, docs_dir, ignore=shutil.ignore_patterns('data'))
     print(f"[mirror] {OUT_DIR} → {docs_dir}  (data/ excluded — for GitHub Pages)",
+          file=sys.stderr)
+
+    d32_count = _count_window_entries(OUT_DIR / 'positions_d32.js', 'POSITIONS_D32')
+    update_deep_status_md(
+        rows={
+            'd12': len(positions_all),
+            'd22': len(deep),
+            'd28': len(very_deep),
+            'd32': d32_count,
+            'chessdb': len(chessdb),
+        },
+        n_traps=n_traps,
+    )
+    print(f"[meta] DEEP_STATUS.md synced "
+          f"(d12={len(positions_all)} d22={len(deep)} d28={len(very_deep)} "
+          f"d32={d32_count} chessdb={len(chessdb)} traps={n_traps})",
           file=sys.stderr)
 
     print(f"[done] open {OUT_DIR / 'index.html'} in browser", file=sys.stderr)

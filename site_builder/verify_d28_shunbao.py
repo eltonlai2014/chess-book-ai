@@ -153,7 +153,7 @@ def post_render_and_push():
     subprocess.run([sys.executable, str(REPO / 'site_builder' / 'migrate_to_sqlite.py')],
                    check=True, cwd=str(REPO))
     print("[post] git add", flush=True)
-    subprocess.run(['git', 'add', 'docs/', 'output/site/'],
+    subprocess.run(['git', 'add', 'docs/', 'output/site/', 'DEEP_STATUS.md'],
                    check=True, cwd=str(REPO))
     msg = (
         "Full depth-28 sweep on 順包 two books — nightly progress\n"
