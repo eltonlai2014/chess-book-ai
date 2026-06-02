@@ -84,6 +84,10 @@ def main():
                     help='Self-deadline — save and exit cleanly when reached')
     ap.add_argument('--no-post', action='store_true',
                     help='Skip the auto render + migrate + commit + push at end')
+    ap.add_argument('--auto-d12-recompute', action='store_true',
+                    help='When d22 sweep finishes (0 todo at start AND at end), trigger '
+                         'site_builder/recompute_d12_full.py to re-eval d12 with the new '
+                         'DFS+TT evaluator. One-shot — marker file blocks repeats.')
     args = ap.parse_args()
 
     games = json.loads(GAMES_JSON.read_text(encoding='utf-8'))
@@ -106,7 +110,27 @@ def main():
     eta_min = len(todo) * 5.5 / 60
     print(f"[plan] est. wall clock @ 5.5s/FEN: {eta_min:.0f} min", file=sys.stderr)
 
-    if args.dry_run or not todo:
+    if args.dry_run:
+        return
+
+    # d22 sweep already at 0 todo when this run started — that means the
+    # nightly schtask fired but everything was already done. Optionally trigger
+    # the queued d12 DFS re-eval (D12_TT_SWEEP.md). One-shot; marker blocks
+    # repeat firings.
+    if not todo:
+        if args.auto_d12_recompute:
+            marker = REPO / 'output' / '.d12_dfs_recompute_done'
+            if marker.exists():
+                print(f"[done] d22 sweep complete; d12 recompute already ran "
+                      f"(marker {marker.name}). Nothing more to do.", file=sys.stderr)
+                return
+            print(f"[d22-complete] sweep at 0 todo — triggering d12 DFS recompute",
+                  file=sys.stderr)
+            subprocess.run(
+                [sys.executable, str(REPO / 'site_builder' / 'recompute_d12_full.py')],
+                check=True, cwd=str(REPO))
+            return
+        print(f"[done] no FENs need deepening — exiting", file=sys.stderr)
         return
 
     # CleanUciEngine instead of cchess.UciEngine — see clean_eval.py for why
@@ -165,6 +189,21 @@ def main():
 
     if not args.no_post:
         post_render_and_push(hit_deadline)
+
+    # End-of-run trigger: if we processed the full todo without hitting the
+    # deadline, this run just CLEARED the d22 sweep. Kick off d12 DFS
+    # recompute on the same night so master wakes up to fresh d12 scores.
+    if args.auto_d12_recompute and not hit_deadline:
+        marker = REPO / 'output' / '.d12_dfs_recompute_done'
+        if marker.exists():
+            print(f"[note] d22 sweep cleared but d12 DFS recompute marker exists — "
+                  f"skipping (already done)", file=sys.stderr)
+        else:
+            print(f"[d22-complete] sweep cleared this run — triggering d12 DFS recompute",
+                  file=sys.stderr)
+            subprocess.run(
+                [sys.executable, str(REPO / 'site_builder' / 'recompute_d12_full.py')],
+                check=True, cwd=str(REPO))
 
 
 def post_render_and_push(partial: bool):
