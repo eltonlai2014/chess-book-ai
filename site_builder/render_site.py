@@ -96,19 +96,23 @@ def _iccs_to_chinese(fen: str, iccs: str) -> str:
         return iccs
 
 
+VIEW_PV_BASE = 6   # d12 PV in positions_view (master positions.js stores [:8])
+VIEW_PV_DEEP = 4   # d22 PV in positions_view (master positions_deep.js stores [:10])
+VIEW_PV_VDEEP = 8  # d28 PV in positions_view (master positions_very_deep.js stores [:16])
+
+
 def enrich_positions(positions: dict, deep: dict | None = None,
                      chessdb: dict | None = None,
                      very_deep: dict | None = None) -> dict:
-    """Per-position: add `best_chinese`, `pv_detail`, and optional deep-eval +
-    chessdb cloud-database fields.
+    """Per-position payload for positions_view.js: adds `best_chinese`,
+    `pv_detail`, deep-eval fields, and chessdb-best fields. PVs are trimmed
+    here vs the master files (constants VIEW_PV_*) — the full PVs live in
+    positions*.js and only the head plies actually animate in the UI.
 
-    pv_detail enables the JS client to animate the engine's principal variation
-    without needing a chess library in the browser.
-    Deep-eval fields (`deep_score`, `deep_mate`, `deep_best_iccs`,
-    `deep_best_chinese`, `deep_depth`) let the client mark plies where the
-    deeper search disagrees with the shallow one.
-    Chessdb fields (`cdb_best_iccs`, `cdb_best_chinese`, `cdb_best_score`,
-    `cdb_best_winrate`, `cdb_moves`) expose the cloud database's view per FEN.
+    The chessdb full `moves` list is NOT shipped here (used to be ~5 MB of
+    positions_view.js). board.js looks up the played move's score+winrate
+    via `ply.cdb_played_*` instead — those fields are written per-ply by
+    annotate_game_plies_with_cdb() at render time.
     """
     deep = deep or {}
     chessdb = chessdb or {}
@@ -134,13 +138,8 @@ def enrich_positions(positions: dict, deep: dict | None = None,
             e['cdb_best_chinese'] = _iccs_to_chinese(fen, top.get('iccs')) if top.get('iccs') else None
             e['cdb_best_score'] = top.get('score')
             e['cdb_best_winrate'] = top.get('winrate')
-            # Keep all moves so the UI can look up the book move's winrate too.
-            e['cdb_moves'] = [
-                {'iccs': m['iccs'], 'score': m.get('score'), 'winrate': m.get('winrate')}
-                for m in cdb['moves']
-            ]
 
-        def _build_pv_detail(pv_iccs):
+        def _build_pv_detail(pv_iccs, keep):
             # fen_after is intentionally omitted: applyIccs() in board.js
             # derives each step's FEN on the fly. Shipping it per step would
             # add ~30-40 MB to positions_view.js and push it past GitHub's
@@ -148,7 +147,7 @@ def enrich_positions(positions: dict, deep: dict | None = None,
             out = []
             try:
                 board = ChessBoard(fen)
-                for iccs in pv_iccs or []:
+                for iccs in (pv_iccs or [])[:keep]:
                     chinese = _iccs_to_chinese(board.to_fen(), iccs)
                     mv = board.move_iccs(iccs)
                     if mv is None:
@@ -173,13 +172,37 @@ def enrich_positions(positions: dict, deep: dict | None = None,
             )
             e['very_deep_depth'] = vd.get('depth')
 
-        e['pv_detail'] = _build_pv_detail(e.get('pv'))
+        e['pv_detail'] = _build_pv_detail(e.get('pv'), VIEW_PV_BASE)
+        # Drop the raw pv array — pv_detail (chinese-annotated) is what board.js reads.
+        # Keeping the raw iccs list on every entry duplicates ~5-10 MB.
+        e.pop('pv', None)
         if d:
-            e['deep_pv_detail'] = _build_pv_detail(d.get('pv'))
+            e['deep_pv_detail'] = _build_pv_detail(d.get('pv'), VIEW_PV_DEEP)
         if vd:
-            e['very_deep_pv_detail'] = _build_pv_detail(vd.get('pv'))
+            e['very_deep_pv_detail'] = _build_pv_detail(vd.get('pv'), VIEW_PV_VDEEP)
         enriched[fen] = e
     return enriched
+
+
+def annotate_game_plies_with_cdb(game: dict, chessdb: dict) -> None:
+    """Write `cdb_played_score` and `cdb_played_winrate` onto each ply where
+    chessdb has a rating for the move that was actually played. Replaces
+    shipping the full cdb_moves[] list in positions_view.js — board.js looks
+    these up per-ply now."""
+    for plies in game.get('variations', []):
+        for p in plies:
+            fen = p.get('fen')
+            iccs = p.get('iccs')
+            if not fen or not iccs:
+                continue
+            cdb = chessdb.get(fen)
+            if not cdb or cdb.get('status') != 'ok':
+                continue
+            for m in (cdb.get('moves') or []):
+                if m.get('iccs') == iccs:
+                    p['cdb_played_score'] = m.get('score')
+                    p['cdb_played_winrate'] = m.get('winrate')
+                    break
 
 
 def save_positions_view(path: Path, positions: dict):
@@ -1351,6 +1374,7 @@ def main():
     for old in GAMES_DIR.glob('*.html'):
         old.unlink()
     for g in games:
+        annotate_game_plies_with_cdb(g, chessdb or {})
         slug = ascii_slug(g['file'])
         path = GAMES_DIR / f"{slug}.html"
         path.write_text(render_game(g), encoding='utf-8')

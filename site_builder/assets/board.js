@@ -1160,33 +1160,39 @@ function annotateTable(vi) {
 
     // chessdb cloud-database overlay — score in red POV (chessdb returns mover-POV,
     // so flip for black plies). Hover shows full book vs cloud-best comparison.
+    // Best-move fields come from entry.cdb_best_*; played-move fields come from
+    // ply.cdb_played_* (written by annotate_game_plies_with_cdb in render_site).
+    // The old `entry.cdb_moves` full list was removed to keep positions_view.js
+    // under GitHub's 100 MB hard limit.
     const cdbCell = tr.querySelector(".cdb");
     if (cdbCell) {
-      const cdbMoves = entry.cdb_moves;
-      if (!cdbMoves || cdbMoves.length === 0) {
+      const bestIccs = entry.cdb_best_iccs;
+      const bestScore = entry.cdb_best_score;
+      const bestWinrate = entry.cdb_best_winrate;
+      if (bestIccs == null) {
         cdbCell.textContent = "";
         cdbCell.className = "cdb";
         cdbCell.removeAttribute("title");
       } else {
         const flipSign = ply.side === "black" ? -1 : 1;
-        const bookEntry = cdbMoves.find((m) => m.iccs === ply.iccs);
-        const best = cdbMoves[0];
-        const matchesBest = best.iccs === ply.iccs;
+        const matchesBest = bestIccs === ply.iccs;
+        const playedScore = ply.cdb_played_score;
+        const playedWinrate = ply.cdb_played_winrate;
         const fmtScoreLocal = (s) => s == null ? "?" : (s >= 0 ? "+" : "") + s;
         const fmtWr = (w) => w == null ? "?" : Math.round(w) + "%";
-        const bestCn = entry.cdb_best_chinese || best.iccs;
-        const bestRedScore = best.score == null ? null : best.score * flipSign;
-        if (bookEntry && bookEntry.score != null) {
-          const sRed = bookEntry.score * flipSign;
+        const bestCn = entry.cdb_best_chinese || bestIccs;
+        const bestRedScore = bestScore == null ? null : bestScore * flipSign;
+        if (playedScore != null) {
+          const sRed = playedScore * flipSign;
           cdbCell.textContent = fmtScoreLocal(sRed);
           cdbCell.className = "cdb " + deltaSignClass(sRed);
           cdbCell.title = matchesBest
-            ? `雲庫推薦同步：${bestCn} ${fmtScoreLocal(bestRedScore)} (勝率 ${fmtWr(best.winrate)})`
-            : `書譜：${ply.iccs} ${fmtScoreLocal(sRed)} (勝率 ${fmtWr(bookEntry.winrate)})\n雲庫最佳：${bestCn} ${fmtScoreLocal(bestRedScore)} (勝率 ${fmtWr(best.winrate)})\n差距：${(best.score - bookEntry.score) * flipSign} cp（紅方視角）`;
+            ? `雲庫推薦同步：${bestCn} ${fmtScoreLocal(bestRedScore)} (勝率 ${fmtWr(bestWinrate)})`
+            : `書譜：${ply.iccs} ${fmtScoreLocal(sRed)} (勝率 ${fmtWr(playedWinrate)})\n雲庫最佳：${bestCn} ${fmtScoreLocal(bestRedScore)} (勝率 ${fmtWr(bestWinrate)})\n差距：${(bestScore - playedScore) * flipSign} cp（紅方視角）`;
         } else {
           cdbCell.textContent = "—";
           cdbCell.className = "cdb cdb-missing";
-          cdbCell.title = `書譜步雲庫無資料\n雲庫最佳：${bestCn} ${fmtScoreLocal(bestRedScore)} (勝率 ${fmtWr(best.winrate)})`;
+          cdbCell.title = `書譜步雲庫無資料\n雲庫最佳：${bestCn} ${fmtScoreLocal(bestRedScore)} (勝率 ${fmtWr(bestWinrate)})`;
         }
       }
     }
