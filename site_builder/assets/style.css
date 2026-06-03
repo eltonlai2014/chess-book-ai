@@ -728,6 +728,24 @@ header.game-header .meta {
   border-radius: var(--radius-sm);
 }
 
+/* ---------- board loading pulse pill ---------- */
+#board .boardBusyPill {
+  fill: var(--accent);
+  fill-opacity: 0.14;
+  stroke: var(--accent);
+  stroke-opacity: 0.45;
+  stroke-width: 1;
+  animation: boardPulse 1.2s ease-in-out infinite;
+}
+#board .boardBusyPill.static { animation: none; fill-opacity: 0.10; stroke-opacity: 0.30; }
+#board .boardBusyTxt {
+  fill: var(--accent-bright, var(--accent));
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: .5px;
+}
+@keyframes boardPulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+
 /* ---------- chart: graph-paper inset ---------- */
 #chart {
   width: 540px;
