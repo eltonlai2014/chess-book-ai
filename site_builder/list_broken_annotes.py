@@ -73,7 +73,12 @@ def collect_broken(xqf_path):
             iccs = str(mv)
             raw = getattr(mv, 'annote', None)
             recovered = _recover_annote(raw)
-            if recovered and looks_garbled(recovered):
+            # Skip structural NUL markers (e.g. "\x00著" move-quality bytes): they
+            # strip to a ≤2-char token and are not author text to re-type. The
+            # checklist should surface only real in-text character loss the user
+            # can actually fix in XQStudio.
+            stripped = recovered.replace('\x00', '').strip() if recovered else ''
+            if recovered and looks_garbled(recovered) and len(stripped) > 2:
                 key = (board.to_fen(), recovered)
                 if key not in seen_fen_annote:
                     seen_fen_annote.add(key)
