@@ -1599,3 +1599,85 @@ table.plies td.cdb {
    --font-* stacks degrade to system serif / Microsoft JhengHei /
    Consolas. The aesthetic survives — it just loses some refinement.
    ============================================================= */
+
+/* ============================================================= */
+/* 轉檔進度 dashboard (status.html). All colours via semantic      */
+/* tokens so the 3 themes re-skin it for free.                    */
+/* ============================================================= */
+.status-page { max-width: 960px; margin: 0 auto; padding: var(--space-3) var(--space-5) var(--space-6); }
+.dash-h2 {
+  font-family: 'Cormorant Garamond', 'Noto Serif TC', serif;
+  font-size: 1.55rem; font-weight: 600; color: var(--fg);
+  margin: 2.4rem 0 .3rem; padding-bottom: .3rem;
+  border-bottom: 1px solid var(--line);
+}
+.dash-note { color: var(--fg-faint); font-size: .82rem; margin: .2rem 0 1rem; }
+.dash-updated { font-family: 'JetBrains Mono', monospace; color: var(--accent); }
+
+/* pipeline cards */
+.stat-cards {
+  display: grid; gap: .9rem;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.stat-card {
+  background: var(--bg-elev); border: 1px solid var(--line);
+  border-radius: 10px; padding: 1rem 1.1rem; position: relative; overflow: hidden;
+}
+.stat-card::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--accent); opacity: .7;
+}
+.stat-card .lbl { color: var(--fg-soft); font-size: .9rem; font-weight: 600; letter-spacing: .03em; }
+.stat-card .num {
+  font-family: 'Cormorant Garamond', 'Noto Serif TC', serif;
+  font-size: 2.1rem; font-weight: 600; line-height: 1.1; color: var(--fg);
+  margin: .15rem 0; font-variant-numeric: tabular-nums;
+}
+.stat-card .sub { color: var(--fg-faint); font-size: .72rem;
+  font-family: 'JetBrains Mono', monospace; }
+
+/* d28 verification progress bar */
+.progress-wrap { background: var(--bg-elev); border: 1px solid var(--line);
+  border-radius: 10px; padding: 1.1rem 1.2rem; }
+.progress-head { display: flex; justify-content: space-between; align-items: baseline;
+  color: var(--fg-soft); font-weight: 600; margin-bottom: .5rem; }
+.progress-frac { font-family: 'JetBrains Mono', monospace; color: var(--accent); font-size: .9rem; }
+.progress-track { height: 12px; border-radius: 6px; background: var(--bg-sunken);
+  border: 1px solid var(--line-soft); overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 6px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-bright)); }
+.progress-wrap .dash-note { margin: .6rem 0 0; }
+
+/* findings chips */
+.dash-findings { display: flex; flex-wrap: wrap; gap: .6rem; }
+.find-chip {
+  display: inline-flex; align-items: baseline; gap: .35rem;
+  background: var(--bg-elev); border: 1px solid var(--line);
+  border-radius: 999px; padding: .4rem .9rem; font-size: .88rem;
+  color: var(--fg-soft); text-decoration: none;
+}
+.find-chip b { font-family: 'JetBrains Mono', monospace; color: var(--fg); font-weight: 600; }
+a.find-chip:hover { border-color: var(--accent); }
+.find-trap b { color: var(--accent); }
+.find-brilliant b { color: var(--cool); }
+.find-clean { color: var(--cool); border-color: var(--cool); }
+
+/* coverage table */
+.cov-table { width: 100%; border-collapse: collapse; font-size: .9rem; margin-top: .3rem; }
+.cov-table th {
+  text-align: left; color: var(--fg-faint); font-weight: 600; font-size: .78rem;
+  letter-spacing: .04em; padding: .4rem .6rem; border-bottom: 1px solid var(--line);
+}
+.cov-table td { padding: .42rem .6rem; border-bottom: 1px solid var(--line-soft);
+  color: var(--fg-soft); font-variant-numeric: tabular-nums; }
+.cov-table td:nth-child(n+2) { text-align: center; }
+.cov-table .cov-name { text-align: left; }
+.cov-table .cov-name a { color: var(--fg); text-decoration: none; }
+.cov-table .cov-name a:hover { color: var(--accent); text-decoration: underline; }
+.cov-table tbody tr:hover td { background: var(--bg-elev); }
+.cov-table .badge-deep {
+  display: inline-block; padding: .08rem .5rem; border-radius: 999px; font-size: .78rem;
+  font-family: 'JetBrains Mono', monospace; color: var(--cool); background: var(--cool-soft);
+}
+.cov-table .badge-deep.deep-partial { opacity: .8; }
+.cov-table .badge-deep.deep-low { opacity: .55; }

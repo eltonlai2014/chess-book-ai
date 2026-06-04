@@ -9,7 +9,7 @@ Output layout (everything under output/site/):
 """
 import json
 import re
-from datetime import date
+from datetime import date, datetime
 import sys
 import shutil
 from pathlib import Path
@@ -243,7 +243,7 @@ INDEX_HTML = """<!DOCTYPE html>
 </head>
 <body>
 <header><h1>象棋書譜 × Pikafish 對照</h1>
-<p class="meta">共 {n_games} 個棋譜檔 · {n_positions} 個唯一局面已分析 · <a class="traps-link" href="traps.html">⚠ 全站陷阱 {n_traps}</a> · <a class="traps-link brilliants-link" href="brilliants.html">✨ 妙手榜 {n_brilliants}</a>{broken_link}</p>
+<p class="meta">共 {n_games} 個棋譜檔 · {n_positions} 個唯一局面已分析 · <a class="traps-link" href="status.html">📊 轉檔進度</a> · <a class="traps-link" href="traps.html">⚠ 全站陷阱 {n_traps}</a> · <a class="traps-link brilliants-link" href="brilliants.html">✨ 妙手榜 {n_brilliants}</a>{broken_link}</p>
 <label class="theme-picker">主題
 <select id="themePicker" onchange="setTheme(this.value)">
 <option value="amber">琥珀 Amber</option>
@@ -405,6 +405,57 @@ BROKEN_ANNOTES_HTML = """<!DOCTYPE html>
   <span><span class="leg-label">變例·步</span><span class="leg-hint">點擊跳到該局面</span></span>
 </div>
 {sections}
+</main>
+</body>
+</html>
+"""
+
+STATUS_HTML = """<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>轉檔進度 — 象棋書譜 × Pikafish</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=IBM+Plex+Sans+TC:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+TC:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+<script>
+  (function() {{
+    var t = localStorage.getItem('chessbookTheme') || 'amber';
+    document.documentElement.dataset.theme = t;
+  }})();
+</script>
+</head>
+<body>
+<header><h1>📊 轉檔進度</h1>
+<p class="meta"><a class="back" href="index.html">← 回到列表</a> · 多深度評估管線的覆蓋與發現 · 更新時間 <span class="dash-updated">{updated}</span> · 每次轉檔後自動更新</p>
+</header>
+<main class="status-page">
+
+<h2 class="dash-h2">評估管線</h2>
+<p class="dash-note">每一層是上一層的子集，逐層加深算力。數字＝該層已評估的局面數。</p>
+<div class="stat-cards">
+{cards}
+</div>
+
+<h2 class="dash-h2">深度驗證進度</h2>
+<p class="dash-note">陷阱候選用 depth-28 覆核（確認 / 減弱 / 翻案）。下面是已覆核比例。</p>
+{progress}
+
+<h2 class="dash-h2">發現</h2>
+<div class="dash-findings">
+{findings}
+</div>
+
+<h2 class="dash-h2">各棋譜深算覆蓋</h2>
+<p class="dash-note">深算覆蓋＝該棋譜有多少局面已做深算（深度22）。100% 代表整局都深算過。</p>
+<table class="cov-table">
+<thead><tr><th>棋譜</th><th>變例</th><th>步</th><th>深算覆蓋</th><th>陷阱</th><th>妙手</th><th>決定性</th></tr></thead>
+<tbody>
+{table}
+</tbody>
+</table>
+
 </main>
 </body>
 </html>
@@ -1313,6 +1364,94 @@ def render_index(games: list, n_positions: int, stats_by_file: dict,
     )
 
 
+def render_status_page(updated: str, counts: dict, games: list,
+                        stats_by_file: dict, n_traps: int, n_brilliants: int,
+                        n_broken: int) -> str:
+    """Build the 轉檔進度 dashboard — per-layer coverage, d28 verification
+    progress, findings, and a per-game deep-coverage table. Regenerated on
+    every render so it always reflects the latest eval state."""
+    n_public = len(games)
+    n_total = counts.get('n_total', n_public)
+
+    # --- pipeline cards (Chinese-first labels, depth code as sublabel) ---
+    card_defs = [
+        ('棋譜庫', f'{n_public}', f'公開分析 · 全庫 {n_total} 局'),
+        ('淺算', f'{counts["d12"]:,}', '深度 12 · 全盤快速評估'),
+        ('深算', f'{counts["d22"]:,}', '深度 22 · 決定性變例'),
+        ('深度驗證', f'{counts["d28"]:,}', '深度 28 · 陷阱覆核'),
+        ('交叉驗證', f'{counts["d32"]:,}', '深度 32 · 覆驗 d28 判決'),
+        ('雲庫評分', f'{counts["chessdb"]:,}', 'chessdb.cn 社群分'),
+    ]
+    cards = '\n'.join(
+        f'<div class="stat-card"><div class="lbl">{lbl}</div>'
+        f'<div class="num">{num}</div><div class="sub">{sub}</div></div>'
+        for lbl, num, sub in card_defs
+    )
+
+    # --- d28 trap-verification progress ---
+    verified = sum(
+        1 for s in stats_by_file.values()
+        for t in s.get('traps', [])
+        if t.get('very_deep_loss') is not None
+    )
+    pct = round(verified / n_traps * 100) if n_traps else 0
+    progress = (
+        f'<div class="progress-wrap">'
+        f'<div class="progress-head"><span>深度28 已覆核陷阱</span>'
+        f'<span class="progress-frac">{verified} / {n_traps}（{pct}%）</span></div>'
+        f'<div class="progress-track"><div class="progress-fill" style="width:{pct}%"></div></div>'
+        f'<div class="dash-note">尚未覆核的 {n_traps - verified} 個陷阱待「深度驗證」批次處理。</div>'
+        f'</div>'
+    )
+
+    # --- findings chips ---
+    decisive_total = sum(s.get('decisive_count', 0) for s in stats_by_file.values())
+    findings = (
+        f'<a class="find-chip find-trap" href="traps.html">⚠ 陷阱 <b>{n_traps}</b></a>'
+        f'<a class="find-chip find-brilliant" href="brilliants.html">✨ 妙手 <b>{n_brilliants}</b></a>'
+        f'<span class="find-chip">★ 決定性變例 <b>{decisive_total}</b></span>'
+    )
+    if n_broken:
+        findings += (f'<a class="find-chip find-broken" href="broken_annotes.html">'
+                     f'✏ 待修註解 <b>{n_broken}</b></a>')
+    else:
+        findings += '<span class="find-chip find-clean">✓ 註解全乾淨</span>'
+
+    # --- per-game coverage table (folder-grouped, 主目錄 first) ---
+    ordered = sorted(games, key=lambda g: (
+        _group_key(g.get('rel_path', g['file'])) != '主目錄',
+        _group_key(g.get('rel_path', g['file'])),
+        g['file'],
+    ))
+    rows = []
+    for g in ordered:
+        st = stats_by_file.get(g['file']) or {}
+        slug = ascii_slug(g['file'])
+        title = display_title(g['file'])
+        dc = st.get('deep_coverage') or 0.0
+        cpct = round(dc * 100)
+        cls = 'good' if cpct >= 95 else ('partial' if cpct >= 50 else 'low')
+        cov = (f'<span class="badge badge-deep deep-{cls}" '
+               f'title="{st.get("n_deep", 0)} / {st.get("n_fens", 0)} 局面有深算">深 {cpct}%</span>')
+        rows.append(
+            f'<tr><td class="cov-name"><a href="games/{slug}.html">{title}</a></td>'
+            f'<td>{len(g["variations"])}</td>'
+            f'<td>{st.get("unique_plies", 0)}</td>'
+            f'<td>{cov}</td>'
+            f'<td>{st.get("trap_count", 0) or "·"}</td>'
+            f'<td>{st.get("brilliant_count", 0) or "·"}</td>'
+            f'<td>{st.get("decisive_count", 0) or "·"}</td></tr>'
+        )
+
+    return STATUS_HTML.format(
+        updated=updated,
+        cards=cards,
+        progress=progress,
+        findings=findings,
+        table='\n'.join(rows),
+    )
+
+
 def _count_window_entries(path: Path, var: str) -> int:
     """Count entries in a `window.VAR = {...};` JS cache file."""
     if not path.exists():
@@ -1459,6 +1598,32 @@ def main():
     else:
         print(f"[write] index.html + traps.html + brilliants.html "
               f"(broken_annotes.json missing — skipped)", file=sys.stderr)
+
+    # 轉檔進度 dashboard — auto-refreshed every render so it tracks the latest
+    # eval state. Chinese-first labels (see render_status_page) per master's
+    # "EnrichD22 不直覺" feedback.
+    bj = OUT_DIR / 'data' / 'broken_annotes.json'
+    n_broken = 0
+    if bj.exists():
+        try:
+            n_broken = json.loads(bj.read_text(encoding='utf-8')).get('total', 0)
+        except Exception:
+            n_broken = 0
+    status_counts = {
+        'd12': len(positions_all),
+        'd22': len(deep),
+        'd28': len(very_deep),
+        'd32': _count_window_entries(OUT_DIR / 'positions_d32.js', 'POSITIONS_D32'),
+        'chessdb': len(chessdb),
+        'n_total': len(all_games),
+    }
+    updated_str = datetime.now().strftime('%Y-%m-%d %H:%M')
+    (OUT_DIR / "status.html").write_text(
+        render_status_page(updated_str, status_counts, games, stats_by_file,
+                           n_traps, n_brilliants, n_broken),
+        encoding='utf-8',
+    )
+    print(f"[write] status.html (轉檔進度 dashboard, updated {updated_str})", file=sys.stderr)
 
     # Mirror to /docs/ so GitHub Pages can serve it (Pages source dropdown only
     # lets you pick `/(root)` or `/docs`, not arbitrary subfolders).
