@@ -1612,7 +1612,8 @@ table.plies td.cdb {
   border-bottom: 1px solid var(--line);
 }
 .dash-note { color: var(--fg-faint); font-size: .82rem; margin: .2rem 0 1rem; }
-.dash-updated { font-family: 'JetBrains Mono', monospace; color: var(--accent); }
+.dash-updated { font-family: 'IBM Plex Sans TC', system-ui, sans-serif; color: var(--accent);
+  font-variant-numeric: tabular-nums lining-nums; }
 
 /* pipeline cards */
 .stat-cards {
@@ -1629,20 +1630,20 @@ table.plies td.cdb {
 }
 .stat-card .lbl { color: var(--fg-soft); font-size: .9rem; font-weight: 600; letter-spacing: .03em; }
 .stat-card .num {
-  font-family: 'JetBrains Mono', 'Consolas', monospace;
-  font-size: 1.9rem; font-weight: 500; line-height: 1.15; color: var(--fg);
+  font-family: 'IBM Plex Sans TC', system-ui, sans-serif;
+  font-size: 1.95rem; font-weight: 600; line-height: 1.15; color: var(--fg);
   margin: .2rem 0; font-variant-numeric: tabular-nums lining-nums;
-  letter-spacing: -.01em;
 }
-.stat-card .sub { color: var(--fg-faint); font-size: .72rem;
-  font-family: 'JetBrains Mono', monospace; }
+.stat-card .sub { color: var(--fg-faint); font-size: .74rem;
+  font-family: 'IBM Plex Sans TC', system-ui, sans-serif; }
 
 /* d28 verification progress bar */
 .progress-wrap { background: var(--bg-elev); border: 1px solid var(--line);
   border-radius: 10px; padding: 1.1rem 1.2rem; }
 .progress-head { display: flex; justify-content: space-between; align-items: baseline;
   color: var(--fg-soft); font-weight: 600; margin-bottom: .5rem; }
-.progress-frac { font-family: 'JetBrains Mono', monospace; color: var(--accent); font-size: .9rem; }
+.progress-frac { font-family: 'IBM Plex Sans TC', system-ui, sans-serif; font-weight: 600;
+  color: var(--accent); font-size: .9rem; font-variant-numeric: tabular-nums lining-nums; }
 .progress-track { height: 12px; border-radius: 6px; background: var(--bg-sunken);
   border: 1px solid var(--line-soft); overflow: hidden; }
 .progress-fill { height: 100%; border-radius: 6px;
@@ -1657,7 +1658,8 @@ table.plies td.cdb {
   border-radius: 999px; padding: .4rem .9rem; font-size: .88rem;
   color: var(--fg-soft); text-decoration: none;
 }
-.find-chip b { font-family: 'JetBrains Mono', monospace; color: var(--fg); font-weight: 600; }
+.find-chip b { font-family: 'IBM Plex Sans TC', system-ui, sans-serif; color: var(--fg);
+  font-weight: 600; font-variant-numeric: tabular-nums lining-nums; }
 a.find-chip:hover { border-color: var(--accent); }
 .find-trap b { color: var(--accent); }
 .find-brilliant b { color: var(--cool); }
@@ -1678,7 +1680,9 @@ a.find-chip:hover { border-color: var(--accent); }
 .cov-table tbody tr:hover td { background: var(--bg-elev); }
 .cov-table .badge-deep {
   display: inline-block; padding: .08rem .5rem; border-radius: 999px; font-size: .78rem;
-  font-family: 'JetBrains Mono', monospace; color: var(--cool); background: var(--cool-soft);
+  font-family: 'IBM Plex Sans TC', system-ui, sans-serif; font-weight: 500;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--cool); background: var(--cool-soft);
 }
 .cov-table .badge-deep.deep-partial { opacity: .8; }
 .cov-table .badge-deep.deep-low { opacity: .55; }
