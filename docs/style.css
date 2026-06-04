@@ -1629,9 +1629,10 @@ table.plies td.cdb {
 }
 .stat-card .lbl { color: var(--fg-soft); font-size: .9rem; font-weight: 600; letter-spacing: .03em; }
 .stat-card .num {
-  font-family: 'Cormorant Garamond', 'Noto Serif TC', serif;
-  font-size: 2.1rem; font-weight: 600; line-height: 1.1; color: var(--fg);
-  margin: .15rem 0; font-variant-numeric: tabular-nums;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 1.9rem; font-weight: 500; line-height: 1.15; color: var(--fg);
+  margin: .2rem 0; font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -.01em;
 }
 .stat-card .sub { color: var(--fg-faint); font-size: .72rem;
   font-family: 'JetBrains Mono', monospace; }
