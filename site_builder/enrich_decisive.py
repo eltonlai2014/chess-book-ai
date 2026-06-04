@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from enrich_depth import load_positions, save_deep, score_cp  # noqa: E402
 from clean_eval import CleanUciEngine  # noqa: E402
+from build_data import collect_fens_dfs  # noqa: E402  (DFS preorder for warm-TT locality)
 
 REPO = Path(__file__).resolve().parent.parent
 EXE = REPO / "engine" / "Windows" / "pikafish-avx2.exe"
@@ -77,8 +78,10 @@ def main():
     ap.add_argument('--depth', type=int, default=22)
     ap.add_argument('--threads', type=int, default=4,
                     help='Pikafish search threads (i7-8700 has 6 cores; 4 leaves room for other work)')
-    ap.add_argument('--hash-mb', type=int, default=512,
-                    help='Pikafish transposition table size in MB (default 16 is way too small)')
+    ap.add_argument('--hash-mb', type=int, default=1024,
+                    help='Pikafish transposition table size in MB. 1024 matches build_data.py '
+                         'so warm TT entries from a parent ply survive until its children/siblings '
+                         'are evaluated in the DFS-ordered sweep (see D12_TT_SWEEP.md).')
     ap.add_argument('--dry-run', action='store_true')
     ap.add_argument('--max-hours', type=float, default=None,
                     help='Self-deadline — save and exit cleanly when reached')
@@ -100,8 +103,20 @@ def main():
     print(f"[scope] {n_public} public games / {n_excl} excluded (中貴棋譜)", file=sys.stderr)
 
     candidates = collect_fens_to_eval(games, shallow)
-    todo = [f for f in sorted(candidates)
-            if f not in deep or deep[f].get('depth', 0) < args.depth]
+    # DFS preorder (parent ply before its children/siblings) instead of the old
+    # sorted()-by-FEN-string order, which scattered positionally-related FENs and
+    # gave the warm TT almost nothing to reuse. collect_fens_dfs walks every game's
+    # variations in first-seen order; we keep only the decisive-variation candidates
+    # that still need this depth.
+    #
+    # WHY: ~24% faster d22 sweeps (TT locality — parent's hot entries seed its
+    # children). This is a SPEED change, NOT an accuracy one: a controlled A/B vs
+    # d28 (ab_d22_order.py / ab_d22_hash.py) showed visit-order is accuracy-neutral
+    # at depth 22 (mean |err| within ~1cp, r=0.99 either way; lexical was in fact
+    # marginally better on near-zero sign agreement). Kept purely for the wall-clock.
+    ordered = collect_fens_dfs(games)
+    todo = [f for f in ordered
+            if f in candidates and (f not in deep or deep[f].get('depth', 0) < args.depth)]
     print(f"[scan] candidate FENs (public, ply≥{SKIP_OPENING_PLIES}, "
           f"|d12|≤{DECISIVE_CUTOFF} or decisive boundary): {len(candidates)}",
           file=sys.stderr)
