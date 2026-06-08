@@ -2,7 +2,7 @@
 
 > 棋譜庫覆蓋率 + 深度計算進度的單一事實來源。更新規則見最後一節。
 >
-> Last updated: <!--auto-date-->2026-06-07<!--/auto-date-->
+> Last updated: <!--auto-date-->2026-06-08<!--/auto-date-->
 
 ## 一、棋譜庫總覽
 
