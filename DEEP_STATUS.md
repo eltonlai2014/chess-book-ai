@@ -2,7 +2,7 @@
 
 > 棋譜庫覆蓋率 + 深度計算進度的單一事實來源。更新規則見最後一節。
 >
-> Last updated: <!--auto-date-->2026-06-08<!--/auto-date-->
+> Last updated: <!--auto-date-->2026-06-09<!--/auto-date-->
 
 ## 一、棋譜庫總覽
 
@@ -25,7 +25,7 @@ unique FEN by depth（`output/site/positions*.js` + `output/site/data/chessdb_ca
 | Depth | 來源檔 | 範圍 / 用途 | Rows |
 |---|---|---|---:|
 | 12 | `positions.js` | 全部 864 局棋譜、每一步的淺算分數（基線資料） | <!--auto-d12-->90,412<!--/auto-d12--> |
-| 22 | `positions_deep.js` | 公開 42 本書（不含中貴）全 ply≥15 局面，跑到 \|d12\| 首次 > 500cp 那步為止（決定點之後不再深算） | <!--auto-d22-->37,641<!--/auto-d22--> (sweeping → ~37,000) |
+| 22 | `positions_deep.js` | 公開 42 本書（不含中貴）全 ply≥15 局面，跑到 \|d12\| 首次 > 500cp 那步為止（決定點之後不再深算） | <!--auto-d22-->38,441<!--/auto-d22--> (sweeping → ~37,000) |
 | 28 | `positions_very_deep.js` | (a) 已偵測 trap 的前後兩格再深算驗證；(b) 順包/ 5 本 + 牛頭滾 2 本 ply≥15 全掃，同樣套 \|d12\|>500 截斷 | <!--auto-d28-->8,436<!--/auto-d28--> |
 | 32 | `positions_d32.js` | 順包/ 中 d28 已跑過的 FEN，再加深到 32 做交叉驗證（看 d28 結論穩不穩） | <!--auto-d32-->3,263<!--/auto-d32--> |
 | chessdb | `data/chessdb_cache.json` | 雲端 chessdb.cn 社群勝率資料，只查 ply 10–25 區間（雲端覆蓋密的範圍） | <!--auto-chessdb-->7,630<!--/auto-chessdb--> |
