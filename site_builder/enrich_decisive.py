@@ -43,14 +43,27 @@ DECISIVE_CUTOFF = 500  # |d12 score| > this → stop deepening further plies in 
 PV_KEEP = 10           # d22 PV is reliable for ~first 10 plies; rest is engine drift
 
 
-def collect_fens_to_eval(games, shallow):
+def collect_fens_to_eval(games, shallow, full_public=False):
     """Walk every public-game variation, include each ply ≥ SKIP_OPENING_PLIES,
     stop when |d12 score| first exceeds DECISIVE_CUTOFF (inclusive of that ply
-    so the prior trap pair stays evaluable)."""
+    so the prior trap pair stays evaluable).
+
+    full_public=True drops BOTH the opening-skip and the decisive cutoff, so
+    every position in every public book is a candidate (中貴棋譜 still excluded).
+    Used for the one-off "完整盤面" backfill — fills the ~800 opening/post-decision
+    FENs the default scope intentionally skips. Does NOT touch nightly behaviour
+    (flag is opt-in)."""
     out = set()
     for g in games:
         rel = g.get('rel_path', '') or ''
         if any(k in rel for k in PUBLIC_EXCLUDE_KEYWORDS):
+            continue
+        if full_public:
+            for plies in g['variations']:
+                for p in plies:
+                    fen = p.get('fen')
+                    if fen and fen in shallow:
+                        out.add(fen)
             continue
         for plies in g['variations']:
             for pi, p in enumerate(plies):
@@ -83,6 +96,10 @@ def main():
                          'so warm TT entries from a parent ply survive until its children/siblings '
                          'are evaluated in the DFS-ordered sweep (see D12_TT_SWEEP.md).')
     ap.add_argument('--dry-run', action='store_true')
+    ap.add_argument('--full-public', action='store_true',
+                    help='Backfill EVERY position in every public book (no opening-skip, '
+                         'no decisive cutoff). 中貴棋譜 still excluded. One-off "完整盤面" sweep; '
+                         'nightly runs leave this off.')
     ap.add_argument('--max-hours', type=float, default=None,
                     help='Self-deadline — save and exit cleanly when reached')
     ap.add_argument('--no-post', action='store_true',
@@ -102,7 +119,7 @@ def main():
     n_excl = len(games) - n_public
     print(f"[scope] {n_public} public games / {n_excl} excluded (中貴棋譜)", file=sys.stderr)
 
-    candidates = collect_fens_to_eval(games, shallow)
+    candidates = collect_fens_to_eval(games, shallow, full_public=args.full_public)
     # DFS preorder (parent ply before its children/siblings) instead of the old
     # sorted()-by-FEN-string order, which scattered positionally-related FENs and
     # gave the warm TT almost nothing to reuse. collect_fens_dfs walks every game's
@@ -117,9 +134,13 @@ def main():
     ordered = collect_fens_dfs(games)
     todo = [f for f in ordered
             if f in candidates and (f not in deep or deep[f].get('depth', 0) < args.depth)]
-    print(f"[scan] candidate FENs (public, ply≥{SKIP_OPENING_PLIES}, "
-          f"|d12|≤{DECISIVE_CUTOFF} or decisive boundary): {len(candidates)}",
-          file=sys.stderr)
+    if args.full_public:
+        print(f"[scan] candidate FENs (FULL-PUBLIC: every position in every public book, "
+              f"中貴棋譜 excluded): {len(candidates)}", file=sys.stderr)
+    else:
+        print(f"[scan] candidate FENs (public, ply≥{SKIP_OPENING_PLIES}, "
+              f"|d12|≤{DECISIVE_CUTOFF} or decisive boundary): {len(candidates)}",
+              file=sys.stderr)
     print(f"[plan] need deep eval at depth {args.depth}: {len(todo)} FENs",
           file=sys.stderr)
     eta_min = len(todo) * 5.5 / 60

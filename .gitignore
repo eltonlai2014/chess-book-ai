@@ -23,6 +23,11 @@ output/site/data/games.json
 # evaluator (see D12_TT_SWEEP.md). Regenerable; not for distribution.
 output/site/positions_single_test.js
 
+# One-shot guard marker for enrich's full d12 DFS recompute. Machine-local
+# state, must persist but never be committed — never delete it (see memory
+# project_d12_recompute_marker).
+output/.d12_dfs_recompute_done
+
 # Python
 __pycache__/
 *.pyc
