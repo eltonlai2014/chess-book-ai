@@ -33,8 +33,14 @@ $before = $watch | ForEach-Object { FileHash $_ }
 
 # 1. ingest source XQF (regenerate games.json, eval only new FENs, migrate sqlite)
 & $py site_builder\build_data.py -d 12 *>&1 | Out-File -FilePath $log -Encoding utf8 -Append
-# 2. deep-eval new decisive d22 candidates; skip enrich's own render/push
-& $py site_builder\enrich_decisive.py --depth 22 --threads 4 --no-post *>&1 | Out-File -FilePath $log -Encoding utf8 -Append
+# 2. deep-eval new public-book d22 candidates. --full-public = every public
+#    position (no opening-skip / decisive cutoff) so new games land 100% d22.
+#    中貴棋譜 still excluded (d12 baseline only). --no-post: render once below.
+#    --max-hours 0.75: BOUNDED so a large backlog (e.g. a freshly-merged book
+#    adding ~20k FENs) does a ~45min chunk here and finishes before the 21:00
+#    d28 task instead of monopolising the engine for 30h. The dedicated 22:30
+#    enrich_d22 task (--max-hours 8) owns the heavy lifting; both are resumable.
+& $py site_builder\enrich_decisive.py --depth 22 --threads 4 --full-public --max-hours 0.75 --no-post *>&1 | Out-File -FilePath $log -Encoding utf8 -Append
 
 $after = $watch | ForEach-Object { FileHash $_ }
 $changed = $false
