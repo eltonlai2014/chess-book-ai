@@ -1202,7 +1202,8 @@ header.game-header .meta {
   box-shadow: var(--shadow-paper);
   font-size: 13.5px;
   line-height: 1.7;
-  flex: 0 0 45%;
+  flex: none;
+  height: 26vh;          /* fixed — decouple from content so切步不抖動 */
   overflow-y: auto;
   position: relative;
 }
@@ -1238,7 +1239,8 @@ header.game-header .meta {
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-paper);
   font-size: 13px;
-  flex: 0 0 55%;
+  flex: none;
+  height: 46vh;          /* fixed — decouple from content so切步不抖動 */
   overflow-y: auto;
   position: relative;
 }
@@ -1269,6 +1271,19 @@ header.game-header .meta {
   flex-direction: column;
   gap: 2px;
 }
+
+/* Match the棋步表 scrollbar aesthetic on the two fixed-height scholia boxes */
+.annote-box::-webkit-scrollbar,
+.alts-box::-webkit-scrollbar { width: 8px; }
+.annote-box::-webkit-scrollbar-track,
+.alts-box::-webkit-scrollbar-track { background: transparent; }
+.annote-box::-webkit-scrollbar-thumb,
+.alts-box::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 4px;
+}
+.annote-box::-webkit-scrollbar-thumb:hover,
+.alts-box::-webkit-scrollbar-thumb:hover { background: var(--fg-faint); }
 .alts-placeholder {
   color: var(--fg-faint);
   font-style: italic;
@@ -1583,6 +1598,8 @@ table.plies td.cdb {
   .board-panel { position: static; }
   #board, #chart { width: 100%; height: auto; max-width: 560px; }
   .right-col { position: static; max-height: none; }
+  /* single-column stack: let the boxes flow naturally instead of nested scroll */
+  .annote-box, .alts-box { height: auto; max-height: 60vh; }
   .game-body { grid-template-columns: 1fr; }
 }
 
