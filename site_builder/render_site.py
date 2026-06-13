@@ -211,6 +211,19 @@ def save_positions_view(path: Path, positions: dict):
     path.write_text(f"window.POSITIONS = {payload};\n", encoding='utf-8')
 
 
+def save_game_positions(path: Path, enriched: dict, fen_set: set) -> int:
+    """Write a per-game slice of the enriched position map.
+
+    Each game page loads only its own `<slug>.pv.js` (co-located in games/),
+    not the monolithic positions_view.js — keeps any single file far under
+    GitHub's 100 MB limit and shrinks the per-page download. Same
+    `window.POSITIONS = {...}` shape so board.js needs zero changes."""
+    slice_ = {f: enriched[f] for f in fen_set if f in enriched}
+    payload = json.dumps(slice_, ensure_ascii=False, separators=(',', ':'))
+    path.write_text(f"window.POSITIONS = {payload};\n", encoding='utf-8')
+    return len(slice_)
+
+
 def display_title(name: str) -> str:
     if name.lower().endswith('.xqf'):
         name = name[:-4]
@@ -508,8 +521,9 @@ GAME_HTML = """<!DOCTYPE html>
 <svg id="board" viewBox="0 0 540 600" xmlns="http://www.w3.org/2000/svg"></svg>
 <script>
 // Early-paint loading pill: self-contained, does NOT depend on board.js, so it
-// covers the ~25MB positions_view.js + board.js download window. board.js's
-// first drawBoard() clears the SVG and seamlessly takes over.
+// covers the per-game <slug>.pv.js + board.js download window (each slice is a
+// few MB, not the old 69MB monolith). board.js's first drawBoard() clears the
+// SVG and seamlessly takes over.
 (function () {{
   var NS = "http://www.w3.org/2000/svg";
   var svg = document.getElementById("board");
@@ -556,7 +570,7 @@ GAME_HTML = """<!DOCTYPE html>
 </div>
 </section>
 </main>
-<script src="../positions_view.js"></script>
+<script src="{pv_src}"></script>
 <script src="../board.js"></script>
 <script>
 const GAME = {game_json};
@@ -746,6 +760,7 @@ def render_game(game: dict) -> str:
         variation_tables='\n'.join(tables),
         game_json=json.dumps(game, ensure_ascii=False),
         traps_anchor=_file_anchor(game['file']),
+        pv_src=f"{ascii_slug(game['file'])}.pv.js",
     )
 
 
@@ -1538,17 +1553,35 @@ def main():
     GAMES_DIR.mkdir(parents=True, exist_ok=True)
     view_path = OUT_DIR / "positions_view.js"
 
-    skip_enrich = fast or _enrich_is_current()
+    # Per-game slices live in games/<slug>.pv.js; positions_view.js is now only a
+    # sentinel. enriched stays None on the skip path (slices reused, not rewritten).
+    enriched = None
+    existing_pv = list(GAMES_DIR.glob('*.pv.js'))
+    # First-run trap guard: even if --fast / mtime says "skip", we MUST enrich
+    # when no .pv.js exist yet, else the game pages reference missing slices and
+    # the whole site breaks silently.
+    skip_enrich = (fast or _enrich_is_current()) and bool(existing_pv)
     if skip_enrich:
         reason = "explicit --fast" if fast else "positions_view.js is newer than all eval sources"
-        print(f"[skip] enrich — {reason} (reusing {view_path.name})", file=sys.stderr)
+        print(f"[skip] enrich — {reason} (reusing {len(existing_pv)} per-game .pv.js slices)",
+              file=sys.stderr)
         enriched_count = len(positions)
     else:
-        print("[enrich] computing Chinese notation + PV fen-after + deep + chessdb overlay", file=sys.stderr)
+        if (fast or _enrich_is_current()) and not existing_pv:
+            print("[enrich] forced — no per-game .pv.js slices exist yet (first run after split)",
+                  file=sys.stderr)
+        else:
+            print("[enrich] computing Chinese notation + PV fen-after + deep + chessdb overlay",
+                  file=sys.stderr)
         enriched = enrich_positions(positions, deep, chessdb, very_deep)
-        save_positions_view(view_path, enriched)
+        # positions_view.js is intentionally written EMPTY: ~22 bytes. Nothing
+        # loads it anymore (game pages load their own <slug>.pv.js); it survives
+        # only as the freshness sentinel for _enrich_is_current() above and the
+        # recompute_d12_full.py mtime check. The real data goes to the slices below.
+        save_positions_view(view_path, {})
         enriched_count = len(enriched)
-        print(f"[write] {view_path}", file=sys.stderr)
+        print(f"[write] {len(enriched)} positions → per-game slices (marker: {view_path.name})",
+              file=sys.stderr)
 
     # Per-game stats need the raw shallow + deep tables, not the enriched ones.
     print("[stats] computing per-game traps + deep coverage", file=sys.stderr)
@@ -1567,15 +1600,28 @@ def main():
             shutil.copy2(src, OUT_DIR / asset)
             print(f"[copy] {asset}", file=sys.stderr)
 
-    # Per-game pages — clean old Chinese-named files first
+    # Per-game pages — clean stale files first. Old .html always cleared (catches
+    # renamed/removed games); old .pv.js cleared only when we (re)enrich, so a
+    # --fast / skip run reuses the existing slices instead of wiping them.
     for old in GAMES_DIR.glob('*.html'):
         old.unlink()
+    if not skip_enrich:
+        for old in GAMES_DIR.glob('*.pv.js'):
+            old.unlink()
+    pv_total = 0
     for g in games:
         annotate_game_plies_with_cdb(g, chessdb or {})
         slug = ascii_slug(g['file'])
-        path = GAMES_DIR / f"{slug}.html"
-        path.write_text(render_game(g), encoding='utf-8')
-    print(f"[write] {len(games)} game pages", file=sys.stderr)
+        (GAMES_DIR / f"{slug}.html").write_text(render_game(g), encoding='utf-8')
+        if not skip_enrich:
+            g_fens = {p['fen'] for v in g['variations'] for p in v if p.get('fen')}
+            pv_total += save_game_positions(GAMES_DIR / f"{slug}.pv.js", enriched, g_fens)
+    if skip_enrich:
+        print(f"[write] {len(games)} game pages (reused {len(existing_pv)} .pv.js slices)",
+              file=sys.stderr)
+    else:
+        print(f"[write] {len(games)} game pages + {len(games)} .pv.js slices "
+              f"({pv_total} FEN entries total)", file=sys.stderr)
 
     # Index + global trap list
     (OUT_DIR / "index.html").write_text(
