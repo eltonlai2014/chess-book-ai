@@ -12,13 +12,14 @@ Take 42 Chinese-chess opening-book files (XQF format, hand-curated by master ove
 
 Public demo: <https://eltonlai2014.github.io/chess-book-ai/> — auto-deployed from `/docs/`.
 
-## Current state (as of 2026-05-20)
+## Current state (as of 2026-06-13)
 
-- **Shallow eval (depth 12)**: 37,316 unique FENs evaluated. Full coverage of every position in every variation.
-- **Deep eval (depth 22)**: 15,035 FENs (decisive variations only). All clean after the [`CleanUciEngine`](site_builder/clean_eval.py) rewrite (the old `cchess.UciEngine` driver had a stdout race that corrupted ~85% of entries).
-- **Very-deep eval (depth 28)**: in progress — 593 / 1013 FENs done (~58%). Running nightly 21:00 → 10:00 on master's PC via Windows scheduled task `ChessBookVerifyDepth28`.
+- **Shallow eval (depth 12)**: 175,466 unique FENs. Full coverage of every position in every variation across all 864 books.
+- **Deep eval (depth 22)**: 59,368 FENs. EnrichD22 now runs in `--full-public` mode — covering *every* position in the public 42 books (no longer just decisive variations), a rolling nightly sweep whose candidate set (~109,869) grows as new books are ingested. All clean after the [`CleanUciEngine`](site_builder/clean_eval.py) rewrite (the old `cchess.UciEngine` driver had a stdout race that corrupted ~85% of entries).
+- **Very-deep eval (depth 28)**: 8,692 FENs. Trap-pair coverage ~100% (`verify_traps.py`); plus full ply≥15 sweeps of 順包/牛頭滾 books (`verify_d28_shunbao.py`).
+- **Cross-check (depth 32)**: 3,281 FENs (順包 d28 verdicts re-checked at d32).
 - **chessdb.cn cloud DB**: 7,630 FENs cached for plies 10–25.
-- **Traps detected**: 591 unique. **Brilliants detected**: 481 unique (gain 50–300cp band).
+- **Traps detected**: 901 unique. **Brilliants detected**: 655 unique (gain 50–300cp band).
 - **Annote fixing**: ~209 broken-encoding annotes still need manual touch-up in XQStudio. Master works through these case-by-case. See [`output/broken_annotes.md`](output/broken_annotes.md) for the checklist.
 
 ## Master's working style
@@ -42,7 +43,7 @@ The repo hard-codes `engine/Windows/pikafish-avx2.exe`. If you're on macOS/Linux
 
 ## Distributed verify_traps — multi-machine coordination
 
-Master has a primary workstation (Windows) running verify_traps nightly. The depth-28 pass is the bottleneck (~120s/FEN average, ~1013 FENs total, ~33 hours total CPU time). Master may delegate part of this to a second machine running Codex.
+Master has a primary workstation (Windows) running verify_traps nightly. The depth-28 pass is the bottleneck (~120s/FEN average). Trap-pair coverage is now ~100%; new traps surfacing from fresh ingests get picked up incrementally. Master may delegate part of this to a second machine running Codex.
 
 **Coordination protocol (zero-code, git-only):**
 
@@ -107,7 +108,8 @@ chess-book-ai/
 │   │   ├── positions.js                # depth-12 cache  (~7.5 MB)
 │   │   ├── positions_deep.js           # depth-22 cache  (~4.3 MB)
 │   │   ├── positions_very_deep.js      # depth-28 cache  (in progress)
-│   │   ├── positions_view.js           # enriched merge for the browser  (~42 MB)
+│   │   ├── positions_view.js           # ~24-byte sentinel ONLY (mtime gate); real data is per-game pv.js below
+│   │   ├── games/<sha1>.pv.js           # per-game enriched slice (window.POSITIONS); each game page loads its own
 │   │   ├── data/
 │   │   │   ├── games.json              # ~50 MB; per-game variation tree + ply records
 │   │   │   └── chessdb_cache.json      # ~8 MB

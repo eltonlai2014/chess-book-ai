@@ -175,7 +175,7 @@ The `_ply_loss` formula (`score(fen_before) + score(fen_after)`, both POV-relati
 ## What's NOT changed in this repo
 
 - `build_data.py`, `enrich_decisive.py`, `chessdb_query.py`, `verify_traps.py`, `render_site.py` all still read/write the `.js` / `.json` files. They are unaware of `positions.db`.
-- Public demo (`docs/`, GitHub Pages) still loads `positions_view.js` via `<script src>`. No change to the static site.
+- Public demo (`docs/`, GitHub Pages) loads per-game slices `games/<slug>.pv.js` via `<script src>` (each page its own; `positions_view.js` is now just a ~24-byte sentinel). Still no `fetch()` — `file://` browse intact. The DB integration is orthogonal to this split.
 - `git status` will show `output/positions.db` as untracked — it's in `.gitignore`.
 
 ## Phase 2 (future) — pipeline migration
@@ -186,7 +186,7 @@ When master decides to pull the trigger, the order to migrate the writers is:
 2. **`build_data.py`** — depth-12 writer; biggest table; rebuild from XQF library.
 3. **`enrich_decisive.py`** — depth-22 writer; resume logic becomes `WHERE depth=22 AND fen NOT IN (SELECT fen FROM evals WHERE depth >= 22)`, much cleaner than the current manual checkpoint.
 4. **`verify_traps.py`** — depth-28 writer; same resume-query pattern.
-5. **`render_site.py`** — switch to reading from DB; keep the existing `positions_view.js` export step so the static site is unaffected.
+5. **`render_site.py`** — switch to reading from DB; keep the existing per-game `.pv.js` export step (`save_game_positions`) so the static site is unaffected.
 
 At that point `migrate_to_sqlite.py` becomes a one-time bootstrap rather than something to re-run after every build.
 
@@ -194,7 +194,7 @@ At that point `migrate_to_sqlite.py` becomes a one-time bootstrap rather than so
 
 Deferred. The cost/benefit analysis (sql.js-httpvfs vs current 47 MB `<script>`) depends on real wire-size and TTI measurements that haven't been taken yet. Before doing this, measure:
 
-- Actual gzipped size of `positions_view.js` on the GitHub Pages CDN (probably 5-10 MB).
+- Actual gzipped size of the per-game `.pv.js` slices on the GitHub Pages CDN (largest game ~12.5 MB raw).
 - Time-to-interactive on a cold visit, especially on mobile.
 - Whether the `file://` browse capability is still in use by anyone (it currently is — board.js works from file://, this would break with a service worker requirement).
 

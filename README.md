@@ -113,6 +113,6 @@ repo 內的 PowerShell 腳本一律用顯式路徑，不必啟動 venv。
 
 ## 已知 / 未做
 
-- `positions_view.js` 已經 32 MB，全長 PV 解封後會到 ~60 MB（GitHub Pages 可吃，但首次載入慢）
+- 前端資料已從單一 `positions_view.js` 改為**按局切片** `games/<slug>.pv.js`（2026-06-13）：每個 game 頁只載自己那局（最大局 ~12.5 MB），避開 GitHub 單檔 100 MB 上限、也大幅縮短開頁下載
 - shallow（depth 12）尚未用 clean_eval 重跑驗證；audit 只看「最佳走法是否合法」(100% 通過)，分數沒比對
 - 沒有 dark mode（`ink` 主題接近但不完全）；要新增主題只動 `:root[data-theme="xxx"]` 一塊 CSS

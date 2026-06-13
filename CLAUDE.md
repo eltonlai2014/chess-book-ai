@@ -20,8 +20,8 @@ Two code paths exist:
 The site has three main pages:
 
 - `index.html` — list of all games, with per-folder ⚠ trap badges + ✨ brilliant badges + per-game ★ decisive count + 深 coverage%.
-- `traps.html` — every "human trap" the pipeline found (shallow loss < 50, deep loss > 100, ply ≥ 16), grouped by 目錄 → 棋譜. Currently 591 traps across 42 games.
-- `brilliants.html` — inverse: plies where the mover's choice beat the engine's depth-22 best (gain 50–300cp, narrower band avoids horizon-effect noise). 481 candidates.
+- `traps.html` — every "human trap" the pipeline found (shallow loss < 50, deep loss > 100, ply ≥ 16), grouped by 目錄 → 棋譜. Currently 901 traps across 42 games.
+- `brilliants.html` — inverse: plies where the mover's choice beat the engine's depth-22 best (gain 50–300cp, narrower band avoids horizon-effect noise). 655 candidates.
 
 ## Commands
 
@@ -37,8 +37,8 @@ Run on Windows via the per-repo venv at `.\.venv\Scripts\python.exe` (created wi
                                                   # depth-22 on variations whose final |shallow_score| > 300
 .\.venv\Scripts\python.exe site_builder\chessdb_query.py                 # optional: fetch chessdb.cn winrate/score for plies 10-25
 .\.venv\Scripts\python.exe site_builder\render_site.py                   # writes output/site/, mirrors → docs/ for GitHub Pages
-.\.venv\Scripts\python.exe site_builder\render_site.py --fast            # skip [enrich] step; reuses existing positions_view.js.
-                                                  # Auto-engages when positions_view.js is newer than every
+.\.venv\Scripts\python.exe site_builder\render_site.py --fast            # skip [enrich] step; reuses existing games/*.pv.js slices.
+                                                  # Auto-engages when positions_view.js sentinel is newer than every
                                                   # eval source — typical case for annote-only XQF edits.
 .\.venv\Scripts\python.exe site_builder\sync_assets.py                   # FASTEST iteration: copy ONLY style.css + board.js to
                                                   # output/site + docs (<1s). Use for CSS/JS-only changes.
@@ -112,11 +112,11 @@ Three stages: XQF parse (`cchess.read_from_xqf` → `Game`), per-FEN dedup, Pika
 - For each detected trap, re-evaluates both `fen_before` and `fen_after` at depth 28 (default). Saves to `output/site/positions_very_deep.js`.
 - Resumable (skips FENs already at target depth). Supports `--max-hours` self-deadline for bounded overnight runs.
 - The [`run_verify_traps.ps1`](site_builder/run_verify_traps.ps1) wrapper disables sleep/hibernate via `powercfg` and tees output to `output/verify_traps_run_<ts>.log`.
-- Registered as Windows scheduled task `ChessBookVerifyDepth28` for nightly 21:00 → 10:00 runs. **594 FENs done / 1013 total as of 2026-05-20.**
+- Registered as Windows scheduled task `ChessBookVerifyDepth28` for nightly 21:00 → 10:00 runs. **Trap-pair coverage ~100% as of 2026-06-13 (8,692 d28 FENs total); new traps from fresh ingests picked up incrementally.**
 
 **Render layer** — [`render_site.py`](site_builder/render_site.py):
 - Loads positions + deep + very_deep + chessdb. Computes per-game stats (traps, brilliants, decisive count, deep coverage). Generates `index.html`, `traps.html`, `brilliants.html`, and one game page per XQF.
-- `pv_detail` ships `iccs` + `chinese` only; `applyIccs()` in board.js derives the FEN each step (saves ~44 MB on positions_view.js).
+- `pv_detail` ships `iccs` + `chinese` only; `applyIccs()` in board.js derives the FEN each step (saves ~44 MB across the per-game `.pv.js` slices).
 - ASCII slug per game (`game-<sha1-10>.html`) avoids Live Server / GitHub Pages bugs on Chinese URLs.
 - **Per-game position slices** (`save_game_positions()`): the enriched position map is split into one `games/<slug>.pv.js` per game (`window.POSITIONS = {只含本局 FEN}`), and each game page loads its own slice via same-dir `<script src="<slug>.pv.js">` — NOT the old monolithic `../positions_view.js`. This keeps every single file far under GitHub's 100 MB hard limit (the monolith hit 69 MB / 123k FEN and was ~4 batches from the wall) and shrinks per-page download from ~87 MB to a few MB. board.js is **zero-changed** — each slice still just sets `window.POSITIONS`. `positions_view.js` survives only as a ~22-byte **sentinel** (its mtime gates `_enrich_is_current()` + `recompute_d12_full.py`); it no longer holds data and nothing loads it. **First-run trap**: deleting all `.pv.js` (or the very first render after this split) must NOT take the skip path — main() guards with `and bool(existing_pv)`, forcing enrich when no slices exist; if you ever wipe `output/site/games/`, run a non-`--fast` render. Stale `.pv.js` are pruned only on a (re)enrich run, so `--fast` safely reuses them.
 - **`_enrich_is_current()` fast-path**: if `positions_view.js` (the sentinel) is newer than positions.js + positions_deep.js + chessdb_cache.json, skip the slow `[enrich]` step entirely and reuse existing `.pv.js` slices. Auto-engaged; explicit `--fast` flag also available.

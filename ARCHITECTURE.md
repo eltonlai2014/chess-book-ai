@@ -33,8 +33,8 @@ XQF 開局書庫  D:\Elton\TestArea\chess-book\  (41 原檔 + AI/ 重存子集)
 │  verify_d32.py ──────────────────────────► positions_d32.js  (d32 交叉驗證)     │
 │      ▼                                                                        │
 │  render_site.py ──► output/site/  →(mirror)→ docs/   (公開站, GitHub Pages)     │
-│      │   合併各 depth + chessdb → positions_view.js (window.POSITIONS, 截短 PV) │
-│      │   算每局 trap/brilliant/decisive/深算覆蓋率 → index/traps/brilliants/game│
+│      │   合併各 depth + chessdb，按局切片 → games/<slug>.pv.js (window.POSITIONS)│
+│      │   positions_view.js 僅留 ~24B 哨兵；算 trap/brilliant/decisive/覆蓋率     │
 │      ▼                                                                        │
 │  migrate_to_sqlite.py ──► output/positions.db   (給 editor 唯讀消費)            │
 └──────────────────────────────────────────────────────────────────────────────┘
@@ -42,7 +42,7 @@ XQF 開局書庫  D:\Elton\TestArea\chess-book\  (41 原檔 + AI/ 重存子集)
    ▲ 所有批量評估都走 site_builder/clean_eval.py 的 CleanUciEngine（單執行緒同步, 不可換 cchess.UciEngine）
 
 公開站前端 (vanilla JS, 無框架, <script src> 無 fetch 故 file:// 也能跑):
-   game 頁 = 內嵌 GAME(games.json 片段) + positions_view.js(全域 POSITIONS) + board.js
+   game 頁 = 內嵌 GAME(games.json 片段) + 同目錄 games/<slug>.pv.js(全域 POSITIONS, 僅本局) + board.js
    board.js: 棋盤 SVG、走勢圖、棋譜列、PV 演示、本步可選、分支箭頭、3 主題 × 多棋盤樣式
 
 另一條獨立 code path: analyze.py — 單 XQF → 單 Markdown 報告的舊 CLI (legacy, 用 cchess.UciEngine)
@@ -67,7 +67,8 @@ XQF 開局書庫  D:\Elton\TestArea\chess-book\  (41 原檔 + AI/ 重存子集)
 | `positions_deep.js` | `window.POSITIONS_DEEP` | FEN→d22 | enrich 增量 |
 | `positions_very_deep.js` | `window.POSITIONS_VERY_DEEP` | FEN→d28 | 只 trap pair |
 | `positions_d32.js` | `window.POSITIONS_D32` | FEN→d32 | 交叉驗證 |
-| `positions_view.js` | `window.POSITIONS` | render 時合併 + 截短 PV 的前端視圖 | **僅含公開 42 本引用的 FEN**；瘦身過（chessdb moves[] 拿掉）。與 positions.js 同名但永不同時載入——前端只載 view，管線源只 Python 讀 |
+| `games/<slug>.pv.js` | `window.POSITIONS` | render 時合併 + 截短 PV 的前端視圖，**按局切片** | 每個 game 頁只載自己那局（同目錄 `<script src>`）；瘦身過（chessdb moves[] 拿掉）。一片一個 `window.POSITIONS = {本局 FEN}`，board.js 零改 |
+| `positions_view.js` | — | **僅 ~24B 哨兵**（不再帶資料、無人載入） | mtime 供 `_enrich_is_current()` 與 `recompute_d12_full.py` 判斷 render 是否已跑 |
 | `positions.db` | SQLite | 上面全部 migrate 進去 | editor 唯讀消費，schema 見 SQLITE_EVAL_DB.md |
 
 ---
@@ -83,14 +84,14 @@ XQF 開局書庫  D:\Elton\TestArea\chess-book\  (41 原檔 + AI/ 重存子集)
 | **分數＝行棋方 POV cp** | `fmt_score` 出行棋方視角；走勢圖用紅方視角 `redPerspectiveScore`；失分 = 紅視角(i)−紅視角(i+1)，黑行棋翻號。server 端 trap 用 `_ply_loss` = score(i)+score(i+1)（皆 POV）。cp **不乘 100**。 | [board.js `deltaCp`](site_builder/assets/board.js#L152)、[render_site.py `_ply_loss`](site_builder/render_site.py#L722) |
 | **中貴棋譜只 d12** | `中貴棋譜/` 822 本不深算、不進公開站。 | `PUBLIC_EXCLUDE_KEYWORDS`（render_site + enrich_decisive 兩處須一致） |
 | **決定性 cutoff** | 公開 42 本 d22 全跑，但走到 `|d12|>500` 那步後跳過後續 ply。 | `DECISIVE_CUTOFF=500`([enrich_decisive.py:41](site_builder/enrich_decisive.py#L41)) |
-| **view 只給瀏覽要的** | positions_view.js 截短 PV（VIEW_PV_*）、拿掉 chessdb `moves[]`，免推爆 GitHub 50MB/100MB 限。**transfer 已被 Pages 自動 gzip**（25.9MB→4MB）；真逼近 100MB 走 per-game 拆檔，**不要手動 zip**（會讓下載更大 + 破壞 file://）。 | `enrich_positions`/`save_positions_view`；HANDOFF §7 |
+| **view 只給瀏覽要的 + 按局拆檔** | enriched 截短 PV（VIEW_PV_*）、拿掉 chessdb `moves[]`，再**按局切成 `games/<slug>.pv.js`**（2026-06-13，舊 monolith 已逼近 69MB/100MB 限）。每片數 MB、最大局 ~12.5MB，單檔遠離上限；**不要手動 zip**（會讓下載更大 + 破壞 file://）。 | `enrich_positions`/`save_game_positions`；CLAUDE.md「Per-game position slices」 |
 | **engine 與 nnue 同目錄** | Pikafish 從 exe 同目錄載 `pikafish.nnue`；換 binary 要連 nnue 一起搬。`engine/` git-ignored。 | `EXE` 各檔頂部硬編 |
 | **靜態站無 fetch** | 全 `<script src>` 載入，故 `file://` 也能跑；別引進 `fetch()`/SSE（那是 editor 的事）。 | game 頁模板 [render_site.py:413](site_builder/render_site.py#L413) |
 | **ASCII slug 檔名** | game 頁 `games/game-<sha1-10>.html`，避開 Live Server / Pages 對中文 URL 的 bug。 | `ascii_slug`([render_site.py:220](site_builder/render_site.py#L220)) |
 | **move_iccs 會 mutate** | `ChessBoard.move_iccs` 改盤面且回 `Move`/`None`；要先檢查 None，再 `board.next_turn()` 翻邊。要不變動就先 `ChessBoard(board.to_fen())` clone。 | build_data / analyze 各 walk 處 |
 | **annote 只在 dump_moves 保留** | `game.dump_moves()` 保 `Move.annote`，`dump_iccs_moves()` 不保——管線一律用前者。 | build_data `scan_games` |
 | **info_move 非終結** | 引擎逐層送 `info`，只有 `bestmove` 是終點；別在第一個 info 就 return。 | clean_eval `_parse_info`/`go` |
-| **render fast-path** | `positions_view.js` 比所有 eval 源新 → 跳過慢 enrich（annote-only XQF 改動的常況）。`positions_very_deep.js` **故意不在**源 mtime 檢查內。 | `_enrich_is_current`([render_site.py:1356](site_builder/render_site.py#L1356)) |
+| **render fast-path** | `positions_view.js` 哨兵比所有 eval 源新 → 跳過慢 enrich、重用既有 `.pv.js`（annote-only XQF 改動的常況）。`positions_very_deep.js` **故意不在**源 mtime 檢查內。**首跑防呆**：`skip_enrich and bool(existing_pv)`——無切片時強制 enrich，免 ship 空站。 | `_enrich_is_current`([render_site.py:1495](site_builder/render_site.py#L1495)) |
 | **d12 重算一次性鎖** | recompute_d12_full 完成後 drop `output/.d12_dfs_recompute_done`；別手刪（除非要強制重跑）。d22/d28/d32 不依賴 d12，重算後仍有效。 | [recompute_d12_full.py](site_builder/recompute_d12_full.py)；HANDOFF §4.2 |
 
 ---
@@ -225,7 +226,7 @@ XQF 開局書庫  D:\Elton\TestArea\chess-book\  (41 原檔 + AI/ 重存子集)
 | PV 演示（淺12/深22/深28 三鈕） | `startDemo`:1533 / `stopDemo`:1093 / `updateDemoButtons`:1130 |
 | **頁面啟動（4a：先畫藥丸 + rAF 推後重活）** | `initGamePage`:1590 / `initGamePageHeavy`:1601 |
 
-> game 頁模板（[render_site.py:413](site_builder/render_site.py#L413)）在 `#board` SVG 後另有一段**自帶**內嵌 script（4b 早繪藥丸），不依賴 board.js，蓋住 25MB positions_view.js 下載空窗；board.js 首次 `drawBoard` 清空 SVG 時無縫接手。改它記得 f-string `{}`→`{{}}`。
+> game 頁模板（`GAME_HTML`, render_site.py）在 `#board` SVG 後另有一段**自帶**內嵌 script（4b 早繪藥丸），不依賴 board.js，蓋住該局 `<slug>.pv.js` 下載空窗（每片數 MB，非舊 69MB monolith）；board.js 首次 `drawBoard` 清空 SVG 時無縫接手。改它記得 f-string `{}`→`{{}}`。
 
 ### 樣式（[style.css](site_builder/assets/style.css)）
 
