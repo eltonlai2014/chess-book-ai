@@ -27,6 +27,9 @@ output/site/positions_single_test.js
 # state, must persist but never be committed — never delete it (see memory
 # project_d12_recompute_marker).
 output/.d12_dfs_recompute_done
+# detect_source_changes.py bookmark of the source library's last-ingested HEAD —
+# machine-local, never committed.
+output/.last_source_ingest
 
 # Python
 __pycache__/
