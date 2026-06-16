@@ -25,7 +25,7 @@ unique FEN by depth（`output/site/positions*.js` + `output/site/data/chessdb_ca
 | Depth | 來源檔 | 範圍 / 用途 | Rows |
 |---|---|---|---:|
 | 12 | `positions.js` | 全部 864 局棋譜、每一步的淺算分數（基線資料） | <!--auto-d12-->175,734<!--/auto-d12--> |
-| 22 | `positions_deep.js` | 公開 42 本書（不含中貴）每一個局面（`--full-public` 全掃，不再 \|d12\|>500 截斷）；滾動補完中，候選 ~109,869 | <!--auto-d22-->76,411<!--/auto-d22--> |
+| 22 | `positions_deep.js` | 公開 42 本書（不含中貴）每一個局面（`--full-public` 全掃，不再 \|d12\|>500 截斷）；滾動補完中，候選 ~109,869 | <!--auto-d22-->76,827<!--/auto-d22--> |
 | 28 | `positions_very_deep.js` | (a) 已偵測 trap 的前後兩格再深算驗證；(b) 順包/ 5 本 + 牛頭滾 2 本 ply≥15 全掃，同樣套 \|d12\|>500 截斷 | <!--auto-d28-->8,963<!--/auto-d28--> |
 | 32 | `positions_d32.js` | 順包/ 中 d28 已跑過的 FEN，再加深到 32 做交叉驗證（看 d28 結論穩不穩） | <!--auto-d32-->3,299<!--/auto-d32--> |
 | chessdb | `data/chessdb_cache.json` | 雲端 chessdb.cn 社群勝率資料，只查 ply 10–25 區間（雲端覆蓋密的範圍） | <!--auto-chessdb-->7,630<!--/auto-chessdb--> |
@@ -101,7 +101,7 @@ d28 sweep 跑完後 d32 候選會擴張到 ~2,273（新 49 FEN）+ 還會隨後�
 | schtask | 腳本 | 排程 | 動作 |
 |---|---|---|---|
 | `ChessBookNightlyBuild` | `nightly_build.ps1` | 排程未確認 | 重 render 全站 + push |
-| `ChessBookVerifyDepth28` | `verify_traps.py` | 21:00 daily | 對 <!--auto-traps-->1171<!--/auto-traps--> traps × 2 跑 d28 |
+| `ChessBookVerifyDepth28` | `verify_traps.py` | 21:00 daily | 對 <!--auto-traps-->1176<!--/auto-traps--> traps × 2 跑 d28 |
 | `ChessBookEnrichD22` | `run_enrich_d22.ps1` | 22:30 daily, `--max-hours 8`, `--full-public` | **公開 42 本每局面 d22 全掃**（滾動增量，候選隨灌譜成長；進度見第六節） |
 | `ChessBookVerifyD28Shunbao` | `verify_d28_shunbao.py` | 22:30 daily（**已暫停**） | 順包/ + 牛頭滾 全 ply≥15 d28，d22 sweep 完後再啟用 |
 | `ChessBookVerifyD32` | `verify_d32.py` | 21:00 daily | 順包/ d28 entries 的 d32 cross-check |
@@ -112,11 +112,11 @@ Schtask 防電源管理：`WakeToRun=True`, `DisallowStartIfOnBatteries=False`, 
 
 ## 六、進行中
 
-| 任務 | 狀態（2026-06-15） | 形態 |
+| 任務 | 狀態（2026-06-16） | 形態 |
 |---|---|---|
-| ChessBookEnrichD22（22:30 daily, 8h/晚, `--full-public`） | d22 **69,447** rows 已算 / 全公開候選 ~**123,760**（6-14 掃描值），約 56% | **滾動全掃**，非一次性 todo |
+| ChessBookEnrichD22（22:30 daily, 8h/晚, `--full-public`） | d22 **76,411** rows 已算 / 全公開候選 ~**124,031**（6-15 掃描值），約 62% | **滾動全掃**，非一次性 todo |
 
-> **2026-06-15 單晚調整**：應主人指示，今晚讓 d22 獨佔 CPU——暫停 `ChessBookVerifyDepth28` 與 `ChessBookVerifyD32`（明早需重新 `/ENABLE` 復原）。昨晚（6-14 22:30→6-15 06:50）三工併行只 +3,509 FEN，獨佔預期可拉高吞吐。
+> **2026-06-16~21 d22 持續獨佔衝刺（進行中）**：應主人指示 `ChessBookVerifyDepth28` + `ChessBookVerifyD32` **暫停至 6-22(一) 才 `/ENABLE` 復原**（除非 d22 提早算完）。6-19(五)~6-21(日) 為非工作日，d22 改**整天全速**（`run_enrich_d22_allday.ps1`，6 線程、無 8h 上限）。獨佔成效實測：6-15 夜單晚 **+6,964 FEN**（69,447→76,411）vs 前晚三工併行 +3,509，約 2 倍。
 
 舊框架（「22,395 todo / 5-7 晚跑完」）已作廢：自 commit `abcca19` 起 EnrichD22 改 `--full-public`——目標是**公開 42 本每一個局面都補 d22**（不再只到 \|d12\|>500 截斷），且候選集隨每晚 20:00 SourceSync 灌新譜而成長，所以這是**持續性夜間增量**而非有固定終點的一次掃描。每晚 commit 訊息為「Enrich d22 nightly progress — public 42 books」。
 
