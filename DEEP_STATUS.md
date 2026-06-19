@@ -112,11 +112,13 @@ Schtask 防電源管理：`WakeToRun=True`, `DisallowStartIfOnBatteries=False`, 
 
 ## 六、進行中
 
-| 任務 | 狀態（2026-06-16） | 形態 |
+| 任務 | 狀態（2026-06-19） | 形態 |
 |---|---|---|
-| ChessBookEnrichD22（22:30 daily, 8h/晚, `--full-public`） | d22 **81,171** rows 已算 / 全公開候選 ~**124,031**（6-15 掃描值），約 65% | **滾動全掃**，非一次性 todo |
+| ChessBookEnrichD22（夜間版暫停）→ **ChessBookEnrichD22Parallel** | d22 **94,277** rows 已算 / 全公開候選 ~**125,256**，約 75%；todo 31,010 並行掃中 | **滾動全掃**，非一次性 todo |
 
-> **2026-06-16~21 d22 持續獨佔衝刺（進行中）**：應主人指示 `ChessBookVerifyDepth28` + `ChessBookVerifyD32` **暫停至 6-22(一) 才 `/ENABLE` 復原**（除非 d22 提早算完）。6-19(五)~6-21(日) 為非工作日，d22 改**整天全速**（`run_enrich_d22_allday.ps1`，6 線程、無 8h 上限）。獨佔成效實測：6-15 夜單晚 **+6,964 FEN**（69,447→76,411）vs 前晚三工併行 +3,509，約 2 倍。
+> **2026-06-16~21 d22 衝刺（進行中）**：`ChessBookVerifyDepth28` + `ChessBookVerifyD32` **暫停至 6-22(一) 才 `/ENABLE` 復原**（除非 d22 提早算完）。
+>
+> **2026-06-19 升級為多實例並行**：Pikafish d22 SMP 擴展弱，改 **3 引擎 × 2 緒**（`site_builder/enrich_parallel.py` orchestrator+worker，`run_enrich_d22_parallel.ps1`）取代舊「1×6 緒整天全速」。PoC+sweep 實測 3×2 ≈ 1×6 的 **2.1x**，1緒vs6緒 d22 有號偏差僅 ~-3cp（散布 ~10cp、非系統性）。shard 寫 `output/_shards`（須在 output/site/ 外，免被 `git add output/site/` 誤收）。31,010 FEN @~2.5s/FEN 估 ~22h → 約 6-20 上午掃完，後接 auto-d12 重算。舊 `ChessBookEnrichD22AllDay` 已刪。
 
 舊框架（「22,395 todo / 5-7 晚跑完」）已作廢：自 commit `abcca19` 起 EnrichD22 改 `--full-public`——目標是**公開 42 本每一個局面都補 d22**（不再只到 \|d12\|>500 截斷），且候選集隨每晚 20:00 SourceSync 灌新譜而成長，所以這是**持續性夜間增量**而非有固定終點的一次掃描。每晚 commit 訊息為「Enrich d22 nightly progress — public 42 books」。
 
