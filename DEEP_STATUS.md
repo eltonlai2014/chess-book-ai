@@ -26,7 +26,7 @@ unique FEN by depth（`output/site/positions*.js` + `output/site/data/chessdb_ca
 |---|---|---|---:|
 | 12 | `positions.js` | 全部 864 局棋譜、每一步的淺算分數（基線資料） | <!--auto-d12-->176,914<!--/auto-d12--> |
 | 22 | `positions_deep.js` | 公開 42 本書（不含中貴）每一個局面（`--full-public` 全掃，不再 \|d12\|>500 截斷）；滾動補完中，候選 ~109,869 | <!--auto-d22-->125,287<!--/auto-d22--> |
-| 28 | `positions_very_deep.js` | (a) 已偵測 trap 的前後兩格再深算驗證；(b) 順包/ 5 本 + 牛頭滾 2 本 ply≥15 全掃，同樣套 \|d12\|>500 截斷 | <!--auto-d28-->8,963<!--/auto-d28--> |
+| 28 | `positions_very_deep.js` | (a) 已偵測 trap 的前後兩格再深算驗證；(b) 順包/ 5 本 + 牛頭滾 2 本 ply≥15 全掃，同樣套 \|d12\|>500 截斷 | <!--auto-d28-->9,102<!--/auto-d28--> |
 | 32 | `positions_d32.js` | 順包/ 中 d28 已跑過的 FEN，再加深到 32 做交叉驗證（看 d28 結論穩不穩） | <!--auto-d32-->3,299<!--/auto-d32--> |
 | chessdb | `data/chessdb_cache.json` | 雲端 chessdb.cn 社群勝率資料，只查 ply 10–25 區間（雲端覆蓋密的範圍） | <!--auto-chessdb-->7,630<!--/auto-chessdb--> |
 
@@ -112,13 +112,13 @@ Schtask 防電源管理：`WakeToRun=True`, `DisallowStartIfOnBatteries=False`, 
 
 ## 六、進行中
 
-| 任務 | 狀態（2026-06-19） | 形態 |
+| 任務 | 狀態（2026-06-20） | 形態 |
 |---|---|---|
-| ChessBookEnrichD22（夜間版暫停）→ **ChessBookEnrichD22Parallel** | d22 **94,277** rows 已算 / 全公開候選 ~**125,256**，約 75%；todo 31,010 並行掃中 | **滾動全掃**，非一次性 todo |
+| ChessBookEnrichD22（夜間版，已復原 22:30 daily） | d22 **125,287** rows / 全公開候選 **125,256**，**full-public 全掃 100% 追平**（2026-06-20 07:00） | **滾動全掃**，後續隨灌譜增量 |
 
-> **2026-06-16~21 d22 衝刺（進行中）**：`ChessBookVerifyDepth28` + `ChessBookVerifyD32` **暫停至 6-22(一) 才 `/ENABLE` 復原**（除非 d22 提早算完）。
+> **2026-06-16~20 d22 衝刺（✅ 已完成、提早算完）**：d22 full-public 於 2026-06-20 07:00 全掃追平（todo 0）。`ChessBookEnrichD22`(22:30)、`ChessBookVerifyDepth28`(21:00)、`ChessBookVerifyD32`(23:00) 均已 `/ENABLE` 復原正常夜間節奏（原訂 6-22，因提早算完於 6-20 提前復原）。
 >
-> **2026-06-19 升級為多實例並行**：Pikafish d22 SMP 擴展弱，改 **3 引擎 × 2 緒**（`site_builder/enrich_parallel.py` orchestrator+worker，`run_enrich_d22_parallel.ps1`）取代舊「1×6 緒整天全速」。PoC+sweep 實測 3×2 ≈ 1×6 的 **2.1x**，1緒vs6緒 d22 有號偏差僅 ~-3cp（散布 ~10cp、非系統性）。shard 寫 `output/_shards`（須在 output/site/ 外，免被 `git add output/site/` 誤收）。31,010 FEN @~2.5s/FEN 估 ~22h → 約 6-20 上午掃完，後接 auto-d12 重算。舊 `ChessBookEnrichD22AllDay` 已刪。
+> **2026-06-19 多實例並行（保留為工具）**：Pikafish d22 SMP 擴展弱，`site_builder/enrich_parallel.py`（orchestrator+worker，wrapper `run_enrich_d22_parallel.ps1`）用 **3 引擎 × 2 緒**，PoC+sweep 實測 ≈ 1×6 的 **2.1x**（1緒vs6緒 d22 有號偏差僅 ~-3cp）。本輪 31,010 FEN 實際 2.22s/FEN、~19h 掃完。shard 寫 `output/_shards`（須在 output/site/ 外）。將來有大批 d22 backlog 可重用此工具。
 
 舊框架（「22,395 todo / 5-7 晚跑完」）已作廢：自 commit `abcca19` 起 EnrichD22 改 `--full-public`——目標是**公開 42 本每一個局面都補 d22**（不再只到 \|d12\|>500 截斷），且候選集隨每晚 20:00 SourceSync 灌新譜而成長，所以這是**持續性夜間增量**而非有固定終點的一次掃描。每晚 commit 訊息為「Enrich d22 nightly progress — public 42 books」。
 
