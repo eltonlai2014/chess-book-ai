@@ -118,7 +118,9 @@ Schtask 防電源管理：`WakeToRun=True`, `DisallowStartIfOnBatteries=False`, 
 
 > **2026-06-16~20 d22 衝刺（✅ 已完成、提早算完）**：d22 full-public 於 2026-06-20 07:00 全掃追平（todo 0）。`ChessBookEnrichD22`(22:30)、`ChessBookVerifyDepth28`(21:00)、`ChessBookVerifyD32`(23:00) 均已 `/ENABLE` 復原正常夜間節奏（原訂 6-22，因提早算完於 6-20 提前復原）。
 >
-> **2026-06-19 多實例並行（保留為工具）**：Pikafish d22 SMP 擴展弱，`site_builder/enrich_parallel.py`（orchestrator+worker，wrapper `run_enrich_d22_parallel.ps1`）用 **3 引擎 × 2 緒**，PoC+sweep 實測 ≈ 1×6 的 **2.1x**（1緒vs6緒 d22 有號偏差僅 ~-3cp）。本輪 31,010 FEN 實際 2.22s/FEN、~19h 掃完。shard 寫 `output/_shards`（須在 output/site/ 外）。將來有大批 d22 backlog 可重用此工具。
+> **多實例並行工具 `site_builder/parallel_runner.py`（統一 d22/d28/d32）**：Pikafish SMP 擴展弱，改 **N 引擎 × 少緒** 勝過 1 引擎多緒。單一 orchestrator+worker 核心 + job 註冊表（`--job d22|traps|d32`，wrapper `run_parallel.ps1 -Job`）。實測 3×2 ≈ 1×6 的 **2.1x**（thread-count 偏差 ~-3cp 可忽略）。d22 本輪 31,010 FEN @2.22s/FEN ~19h 掃完。**僅非工作日使用**（平日留 CPU 給主人）。shard 寫 `output/_shards`（須在 output/site/ 外）。
+>
+> **下週末待清（2026-06-22 dry-run）**：d28(traps) **1,325** FEN、d32 **323** FEN。屆時 `run_parallel.ps1 -Job traps` 再 `-Job d32`。（2026-06-19 的 `enrich_parallel.py`/`verify_parallel.py` 已收斂進 `parallel_runner.py`。）
 
 舊框架（「22,395 todo / 5-7 晚跑完」）已作廢：自 commit `abcca19` 起 EnrichD22 改 `--full-public`——目標是**公開 42 本每一個局面都補 d22**（不再只到 \|d12\|>500 截斷），且候選集隨每晚 20:00 SourceSync 灌新譜而成長，所以這是**持續性夜間增量**而非有固定終點的一次掃描。每晚 commit 訊息為「Enrich d22 nightly progress — public 42 books」。
 
