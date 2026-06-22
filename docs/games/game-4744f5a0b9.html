@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>王鐵軍。13263675952[業6-1] 先負 Elton[業7-1]</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=IBM+Plex+Sans+TC:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+TC:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../style.css">
+<script>
+  (function() {
+    var t = localStorage.getItem('chessbookTheme') || 'amber';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+</head>
+<body>
+<header class="game-header">
+<a class="back" href="../index.html">← 回到列表</a>
+<a class="back back-traps" href="../traps.html#file-4744f5a0b9" title="跳到全站陷阱頁的此檔區段">⚠ 陷阱列表</a>
+<a class="back back-brilliants" href="../brilliants.html#file-4744f5a0b9" title="跳到妙手榜的此檔區段">✨ 妙手榜</a>
+<h1>王鐵軍。13263675952[業6-1] 先負 Elton[業7-1]</h1>
+<span class="meta">變例 1 條 · 結果 0-1</span>
+<label class="theme-picker">主題
+<select id="themePicker" onchange="setTheme(this.value)">
+<option value="amber">琥珀 Amber</option>
+<option value="emerald">翡翠 Emerald</option>
+<option value="ink">墨拓 Ink</option>
+</select>
+</label>
+</header>
+<script>
+  function setTheme(name) {
+    document.documentElement.dataset.theme = name;
+    localStorage.setItem('chessbookTheme', name);
+  }
+  document.addEventListener('DOMContentLoaded', function() {
+    var t = localStorage.getItem('chessbookTheme') || 'amber';
+    var p = document.getElementById('themePicker');
+    if (p) p.value = t;
+  });
+</script>
+<main class="game">
+<aside class="board-panel">
+<svg id="board" viewBox="0 0 540 600" xmlns="http://www.w3.org/2000/svg"></svg>
+<script>
+// Early-paint loading pill: self-contained, does NOT depend on board.js, so it
+// covers the per-game <slug>.pv.js + board.js download window (each slice is a
+// few MB, not the old 69MB monolith). board.js's first drawBoard() clears the
+// SVG and seamlessly takes over.
+(function () {
+  var NS = "http://www.w3.org/2000/svg";
+  var svg = document.getElementById("board");
+  if (!svg) return;
+  function mk(tag, attrs) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    svg.appendChild(e); return e;
+  }
+  mk("rect", { x: 160, y: 277, width: 220, height: 46, rx: 23, ry: 23, "class": "boardBusyPill" });
+  mk("text", { x: 270, y: 306, "text-anchor": "middle", "class": "boardBusyTxt" }).textContent = "棋譜載入中…";
+})();
+</script>
+<svg id="chart" viewBox="0 0 540 140" xmlns="http://www.w3.org/2000/svg"></svg>
+</aside>
+<section class="game-panel">
+<div class="control-bar">
+<div class="varpicker" id="varpicker"><button type="button" class="varpicker-trigger" id="varpickerTrigger" aria-haspopup="true" aria-expanded="false"><span class="varpicker-current" id="varpickerCurrent">變例 1 (36 步)</span><span class="varpicker-caret">▾</span></button><div class="varpicker-panel" id="varpickerPanel" hidden><div class="vp-leaves"><button type="button" class="varpicker-option" data-vi="0" data-pi="-1"><span class="vp-vinum">1</span><span class="vp-plycount">36 步</span></button></div></div></div>
+<button class="nav-first" title="跳到第一步">|◀</button>
+<button class="nav-branch" id="navBranchBtn" title="回到此變例最接近的上一個分歧步">⑂ 跳分支</button>
+<button class="nav-prev" title="上一步">◀</button>
+<span class="nav-status" id="navStatus">第 0 / 0 步</span>
+<button class="nav-next" title="下一步">▶</button>
+<button class="nav-last" title="跳到末步">▶|</button>
+<button class="demo-play" id="demoBtnShallow" data-mode="shallow" title="播放 depth-12 引擎主變">▶ 演示 淺12</button>
+<button class="demo-play demo-deep" id="demoBtnDeep" data-mode="deep" title="播放 depth-22 引擎主變（只有深算過的局面）">▶ 演示 深22</button>
+<button class="demo-play demo-vdeep" id="demoBtnVeryDeep" data-mode="verydeep" title="播放 depth-28 引擎主變（只有陷阱驗證過的局面）">▶ 演示 深28</button>
+<label class="redp"><input type="checkbox" id="redPerspective" checked> 紅方視角</label>
+</div>
+<div class="step-info" id="stepInfo">
+<span class="placeholder">點選表格任一步，或變例選單切換變例</span>
+</div>
+<div class="game-body">
+<div class="plies-host">
+<div class="plies-wrap" data-var="0"><table class="plies"><thead><tr><th>#</th><th>方</th><th>書譜</th><th>引擎首選</th><th title="局面評分（紅方視角；正=紅優，負=黑優）">分(cp)</th><th title="depth 12 紅方分數變化（正=紅得 cp，負=紅失 cp）">Δ</th><th title="depth 22 紅方分數變化（與 Δ 差很大 = 人類陷阱）">深Δ</th><th title="chessdb.cn 雲庫評分（紅方視角；hover 看最佳替代）">雲庫</th><th>同?</th></tr></thead><tbody><tr data-var="0" data-ply="0" data-fen="rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w" class="red"><td class="num">1</td><td class="side">紅</td><td class="book-cn">炮二平五</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="1" data-fen="rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C2C4/9/RNBAKABNR b" class="black"><td class="num">2</td><td class="side">黑</td><td class="book-cn">馬８進７</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="2" data-fen="rnbakab1r/9/1c4nc1/p1p1p1p1p/9/9/P1P1P1P1P/1C2C4/9/RNBAKABNR w" class="red"><td class="num">3</td><td class="side">紅</td><td class="book-cn">馬二進三</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="3" data-fen="rnbakab1r/9/1c4nc1/p1p1p1p1p/9/9/P1P1P1P1P/1C2C1N2/9/RNBAKAB1R b" class="black"><td class="num">4</td><td class="side">黑</td><td class="book-cn">車９平８</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="4" data-fen="rnbakabr1/9/1c4nc1/p1p1p1p1p/9/9/P1P1P1P1P/1C2C1N2/9/RNBAKAB1R w" class="red"><td class="num">5</td><td class="side">紅</td><td class="book-cn">車一平二</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="5" data-fen="rnbakabr1/9/1c4nc1/p1p1p1p1p/9/9/P1P1P1P1P/1C2C1N2/9/RNBAKABR1 b" class="black"><td class="num">6</td><td class="side">黑</td><td class="book-cn">卒７進１</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="6" data-fen="rnbakabr1/9/1c4nc1/p1p1p3p/6p2/9/P1P1P1P1P/1C2C1N2/9/RNBAKABR1 w" class="red"><td class="num">7</td><td class="side">紅</td><td class="book-cn">兵七進一</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="7" data-fen="rnbakabr1/9/1c4nc1/p1p1p3p/6p2/2P6/P3P1P1P/1C2C1N2/9/RNBAKABR1 b" class="black"><td class="num">8</td><td class="side">黑</td><td class="book-cn">包８進４</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="8" data-fen="rnbakabr1/9/1c4n2/p1p1p3p/6p2/2P6/P3P1PcP/1C2C1N2/9/RNBAKABR1 w" class="red"><td class="num">9</td><td class="side">紅</td><td class="book-cn">馬八進七</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="9" data-fen="rnbakabr1/9/1c4n2/p1p1p3p/6p2/2P6/P3P1PcP/1CN1C1N2/9/R1BAKABR1 b" class="black"><td class="num">10</td><td class="side">黑</td><td class="book-cn">象３進５</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="10" data-fen="rn1akabr1/9/1c2b1n2/p1p1p3p/6p2/2P6/P3P1PcP/1CN1C1N2/9/R1BAKABR1 w" class="red"><td class="num">11</td><td class="side">紅</td><td class="book-cn">兵五進一</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="11" data-fen="rn1akabr1/9/1c2b1n2/p1p1p3p/6p2/2P1P4/P5PcP/1CN1C1N2/9/R1BAKABR1 b" class="black"><td class="num">12</td><td class="side">黑</td><td class="book-cn">士４進５</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="12" data-fen="rn2kabr1/4a4/1c2b1n2/p1p1p3p/6p2/2P1P4/P5PcP/1CN1C1N2/9/R1BAKABR1 w" class="red"><td class="num">13</td><td class="side">紅</td><td class="book-cn">馬七進六</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="13" data-fen="rn2kabr1/4a4/1c2b1n2/p1p1p3p/6p2/2PNP4/P5PcP/1C2C1N2/9/R1BAKABR1 b" class="black"><td class="num">14</td><td class="side">黑</td><td class="book-cn">包２進３</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="14" data-fen="rn2kabr1/4a4/4b1n2/p1p1p3p/6p2/1cPNP4/P5PcP/1C2C1N2/9/R1BAKABR1 w" class="red"><td class="num">15</td><td class="side">紅</td><td class="book-cn">馬六進七</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="15" data-fen="rn2kabr1/4a4/4b1n2/p1N1p3p/6p2/1cP1P4/P5PcP/1C2C1N2/9/R1BAKABR1 b" class="black"><td class="num">16</td><td class="side">黑</td><td class="book-cn">包２平５</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="16" data-fen="rn2kabr1/4a4/4b1n2/p1N1p3p/6p2/2P1c4/P5PcP/1C2C1N2/9/R1BAKABR1 w" class="red"><td class="num">17</td><td class="side">紅</td><td class="book-cn">仕六進五</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="17" data-fen="rn2kabr1/4a4/4b1n2/p1N1p3p/6p2/2P1c4/P5PcP/1C2C1N2/4A4/R1B1KABR1 b" class="black"><td class="num">18</td><td class="side">黑</td><td class="book-cn">馬２進１</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="18" data-fen="r3kabr1/4a4/n3b1n2/p1N1p3p/6p2/2P1c4/P5PcP/1C2C1N2/4A4/R1B1KABR1 w" class="red"><td class="num">19</td><td class="side">紅</td><td class="book-cn">炮八進二</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="19" data-fen="r3kabr1/4a4/n3b1n2/p1N1p3p/6p2/1CP1c4/P5PcP/4C1N2/4A4/R1B1KABR1 b" class="black"><td class="num">20</td><td class="side">黑</td><td class="book-cn">馬１進３</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="20" data-fen="r3kabr1/4a4/4b1n2/p1n1p3p/6p2/1CP1c4/P5PcP/4C1N2/4A4/R1B1KABR1 w" class="red"><td class="num">21</td><td class="side">紅</td><td class="book-cn">炮八平五</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="21" data-fen="r3kabr1/4a4/4b1n2/p1n1p3p/6p2/2P1C4/P5PcP/4C1N2/4A4/R1B1KABR1 b" class="black"><td class="num">22</td><td class="side">黑</td><td class="book-cn">卒５進１</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="22" data-fen="r3kabr1/4a4/4b1n2/p1n5p/4p1p2/2P1C4/P5PcP/4C1N2/4A4/R1B1KABR1 w" class="red"><td class="num">23</td><td class="side">紅</td><td class="book-cn">前炮退一</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="23" data-fen="r3kabr1/4a4/4b1n2/p1n5p/4p1p2/2P6/P3C1PcP/4C1N2/4A4/R1B1KABR1 b" class="black"><td class="num">24</td><td class="side">黑</td><td class="book-cn">包８進２</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="24" data-fen="r3kabr1/4a4/4b1n2/p1n5p/4p1p2/2P6/P3C1P1P/4C1N2/4A2c1/R1B1KABR1 w" class="red"><td class="num">25</td><td class="side">紅</td><td class="book-cn">車九平八</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="25" data-fen="r3kabr1/4a4/4b1n2/p1n5p/4p1p2/2P6/P3C1P1P/4C1N2/4A2c1/1RB1KABR1 b" class="black"><td class="num">26</td><td class="side">黑</td><td class="book-cn">馬３進４</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="26" data-fen="r3kabr1/4a4/4b1n2/p7p/4p1p2/2Pn5/P3C1P1P/4C1N2/4A2c1/1RB1KABR1 w" class="red"><td class="num">27</td><td class="side">紅</td><td class="book-cn">後炮進三</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="27" data-fen="r3kabr1/4a4/4b1n2/p7p/4C1p2/2Pn5/P3C1P1P/6N2/4A2c1/1RB1KABR1 b" class="black"><td class="num">28</td><td class="side">黑</td><td class="book-cn">馬４進６</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="28" data-fen="r3kabr1/4a4/4b1n2/p7p/4C1p2/2P6/P3CnP1P/6N2/4A2c1/1RB1KABR1 w" class="red"><td class="num">29</td><td class="side">紅</td><td class="book-cn">前炮平六</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="29" data-fen="r3kabr1/4a4/4b1n2/p7p/3C2p2/2P6/P3CnP1P/6N2/4A2c1/1RB1KABR1 b" class="black"><td class="num">30</td><td class="side">黑</td><td class="book-cn">車１平４</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="30" data-fen="3rkabr1/4a4/4b1n2/p7p/3C2p2/2P6/P3CnP1P/6N2/4A2c1/1RB1KABR1 w" class="red"><td class="num">31</td><td class="side">紅</td><td class="book-cn">炮六退三</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="31" data-fen="3rkabr1/4a4/4b1n2/p7p/6p2/2P6/P3CnP1P/3C2N2/4A2c1/1RB1KABR1 b" class="black"><td class="num">32</td><td class="side">黑</td><td class="book-cn">馬６進７</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="32" data-fen="3rkabr1/4a4/4b1n2/p7p/6p2/2P6/P3C1P1P/3C2N2/4A1nc1/1RB1KABR1 w" class="red"><td class="num">33</td><td class="side">紅</td><td class="book-cn">帅五平六</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="33" data-fen="3rkabr1/4a4/4b1n2/p7p/6p2/2P6/P3C1P1P/3C2N2/4A1nc1/1RBK1ABR1 b" class="black"><td class="num">34</td><td class="side">黑</td><td class="book-cn">包８平５</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="34" data-fen="3rkabr1/4a4/4b1n2/p7p/6p2/2P6/P3C1P1P/3C2N2/4c1n2/1RBK1ABR1 w" class="red"><td class="num">35</td><td class="side">紅</td><td class="book-cn">車二進九</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr>
+<tr data-var="0" data-ply="35" data-fen="3rkabR1/4a4/4b1n2/p7p/6p2/2P6/P3C1P1P/3C2N2/4c1n2/1RBK1AB2 b" class="black"><td class="num">36</td><td class="side">黑</td><td class="book-cn">車４進７</td><td class="eng-best"></td><td class="score"></td><td class="delta"></td><td class="deep-delta"></td><td class="cdb"></td><td class="same"></td></tr></tbody></table></div>
+</div>
+<div class="right-col">
+<div class="annote-box" id="annoteBox"></div>
+<div class="alts-box" id="altsBox">
+<div class="alts-head">💡 本步可選</div>
+<div class="alts-body"></div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<script src="game-4744f5a0b9.pv.js"></script>
+<script src="../board.js"></script>
+<script>
+const GAME = {"file": "王鐵軍。13263675952[業6-1] 先負 Elton[業7-1].xqf", "rel_path": "qqchess\\王鐵軍。13263675952[業6-1] 先負 Elton[業7-1].xqf", "init_fen": "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w", "result": "0-1", "branches": 1, "variations": [[{"fen": "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w", "side": "red", "iccs": "h2e2", "chinese": "炮二平五", "annote": null}, {"fen": "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C2C4/9/RNBAKABNR b", "side": "black", "iccs": "h9g7", "chinese": "馬８進７", "annote": null}, {"fen": "rnbakab1r/9/1c4nc1/p1p1p1p1p/9/9/P1P1P1P1P/1C2C4/9/RNBAKABNR w", "side": "red", "iccs": "h0g2", "chinese": "馬二進三", "annote": null}, {"fen": "rnbakab1r/9/1c4nc1/p1p1p1p1p/9/9/P1P1P1P1P/1C2C1N2/9/RNBAKAB1R b", "side": "black", "iccs": "i9h9", "chinese": "車９平８", "annote": null}, {"fen": "rnbakabr1/9/1c4nc1/p1p1p1p1p/9/9/P1P1P1P1P/1C2C1N2/9/RNBAKAB1R w", "side": "red", "iccs": "i0h0", "chinese": "車一平二", "annote": null}, {"fen": "rnbakabr1/9/1c4nc1/p1p1p1p1p/9/9/P1P1P1P1P/1C2C1N2/9/RNBAKABR1 b", "side": "black", "iccs": "g6g5", "chinese": "卒７進１", "annote": null}, {"fen": "rnbakabr1/9/1c4nc1/p1p1p3p/6p2/9/P1P1P1P1P/1C2C1N2/9/RNBAKABR1 w", "side": "red", "iccs": "c3c4", "chinese": "兵七進一", "annote": null}, {"fen": "rnbakabr1/9/1c4nc1/p1p1p3p/6p2/2P6/P3P1P1P/1C2C1N2/9/RNBAKABR1 b", "side": "black", "iccs": "h7h3", "chinese": "包８進４", "annote": null}, {"fen": "rnbakabr1/9/1c4n2/p1p1p3p/6p2/2P6/P3P1PcP/1C2C1N2/9/RNBAKABR1 w", "side": "red", "iccs": "b0c2", "chinese": "馬八進七", "annote": null}, {"fen": "rnbakabr1/9/1c4n2/p1p1p3p/6p2/2P6/P3P1PcP/1CN1C1N2/9/R1BAKABR1 b", "side": "black", "iccs": "c9e7", "chinese": "象３進５", "annote": null, "cdb_played_score": 0, "cdb_played_winrate": 50.0}, {"fen": "rn1akabr1/9/1c2b1n2/p1p1p3p/6p2/2P6/P3P1PcP/1CN1C1N2/9/R1BAKABR1 w", "side": "red", "iccs": "e3e4", "chinese": "兵五進一", "annote": null, "cdb_played_score": 0, "cdb_played_winrate": 50.0}, {"fen": "rn1akabr1/9/1c2b1n2/p1p1p3p/6p2/2P1P4/P5PcP/1CN1C1N2/9/R1BAKABR1 b", "side": "black", "iccs": "d9e8", "chinese": "士４進５", "annote": null}, {"fen": "rn2kabr1/4a4/1c2b1n2/p1p1p3p/6p2/2P1P4/P5PcP/1CN1C1N2/9/R1BAKABR1 w", "side": "red", "iccs": "c2d4", "chinese": "馬七進六", "annote": null}, {"fen": "rn2kabr1/4a4/1c2b1n2/p1p1p3p/6p2/2PNP4/P5PcP/1C2C1N2/9/R1BAKABR1 b", "side": "black", "iccs": "b7b4", "chinese": "包２進３", "annote": null}, {"fen": "rn2kabr1/4a4/4b1n2/p1p1p3p/6p2/1cPNP4/P5PcP/1C2C1N2/9/R1BAKABR1 w", "side": "red", "iccs": "d4c6", "chinese": "馬六進七", "annote": null}, {"fen": "rn2kabr1/4a4/4b1n2/p1N1p3p/6p2/1cP1P4/P5PcP/1C2C1N2/9/R1BAKABR1 b", "side": "black", "iccs": "b4e4", "chinese": "包２平５", "annote": null}, {"fen": "rn2kabr1/4a4/4b1n2/p1N1p3p/6p2/2P1c4/P5PcP/1C2C1N2/9/R1BAKABR1 w", "side": "red", "iccs": "d0e1", "chinese": "仕六進五", "annote": null}, {"fen": "rn2kabr1/4a4/4b1n2/p1N1p3p/6p2/2P1c4/P5PcP/1C2C1N2/4A4/R1B1KABR1 b", "side": "black", "iccs": "b9a7", "chinese": "馬２進１", "annote": null}, {"fen": "r3kabr1/4a4/n3b1n2/p1N1p3p/6p2/2P1c4/P5PcP/1C2C1N2/4A4/R1B1KABR1 w", "side": "red", "iccs": "b2b4", "chinese": "炮八進二", "annote": null}, {"fen": "r3kabr1/4a4/n3b1n2/p1N1p3p/6p2/1CP1c4/P5PcP/4C1N2/4A4/R1B1KABR1 b", "side": "black", "iccs": "a7c6", "chinese": "馬１進３", "annote": null}, {"fen": "r3kabr1/4a4/4b1n2/p1n1p3p/6p2/1CP1c4/P5PcP/4C1N2/4A4/R1B1KABR1 w", "side": "red", "iccs": "b4e4", "chinese": "炮八平五", "annote": null}, {"fen": "r3kabr1/4a4/4b1n2/p1n1p3p/6p2/2P1C4/P5PcP/4C1N2/4A4/R1B1KABR1 b", "side": "black", "iccs": "e6e5", "chinese": "卒５進１", "annote": null}, {"fen": "r3kabr1/4a4/4b1n2/p1n5p/4p1p2/2P1C4/P5PcP/4C1N2/4A4/R1B1KABR1 w", "side": "red", "iccs": "e4e3", "chinese": "前炮退一", "annote": null}, {"fen": "r3kabr1/4a4/4b1n2/p1n5p/4p1p2/2P6/P3C1PcP/4C1N2/4A4/R1B1KABR1 b", "side": "black", "iccs": "h3h1", "chinese": "包８進２", "annote": null}, {"fen": "r3kabr1/4a4/4b1n2/p1n5p/4p1p2/2P6/P3C1P1P/4C1N2/4A2c1/R1B1KABR1 w", "side": "red", "iccs": "a0b0", "chinese": "車九平八", "annote": null}, {"fen": "r3kabr1/4a4/4b1n2/p1n5p/4p1p2/2P6/P3C1P1P/4C1N2/4A2c1/1RB1KABR1 b", "side": "black", "iccs": "c6d4", "chinese": "馬３進４", "annote": null}, {"fen": "r3kabr1/4a4/4b1n2/p7p/4p1p2/2Pn5/P3C1P1P/4C1N2/4A2c1/1RB1KABR1 w", "side": "red", "iccs": "e2e5", "chinese": "後炮進三", "annote": null}, {"fen": "r3kabr1/4a4/4b1n2/p7p/4C1p2/2Pn5/P3C1P1P/6N2/4A2c1/1RB1KABR1 b", "side": "black", "iccs": "d4f3", "chinese": "馬４進６", "annote": null}, {"fen": "r3kabr1/4a4/4b1n2/p7p/4C1p2/2P6/P3CnP1P/6N2/4A2c1/1RB1KABR1 w", "side": "red", "iccs": "e5d5", "chinese": "前炮平六", "annote": null}, {"fen": "r3kabr1/4a4/4b1n2/p7p/3C2p2/2P6/P3CnP1P/6N2/4A2c1/1RB1KABR1 b", "side": "black", "iccs": "a9d9", "chinese": "車１平４", "annote": null}, {"fen": "3rkabr1/4a4/4b1n2/p7p/3C2p2/2P6/P3CnP1P/6N2/4A2c1/1RB1KABR1 w", "side": "red", "iccs": "d5d2", "chinese": "炮六退三", "annote": null}, {"fen": "3rkabr1/4a4/4b1n2/p7p/6p2/2P6/P3CnP1P/3C2N2/4A2c1/1RB1KABR1 b", "side": "black", "iccs": "f3g1", "chinese": "馬６進７", "annote": null}, {"fen": "3rkabr1/4a4/4b1n2/p7p/6p2/2P6/P3C1P1P/3C2N2/4A1nc1/1RB1KABR1 w", "side": "red", "iccs": "e0d0", "chinese": "帅五平六", "annote": null}, {"fen": "3rkabr1/4a4/4b1n2/p7p/6p2/2P6/P3C1P1P/3C2N2/4A1nc1/1RBK1ABR1 b", "side": "black", "iccs": "h1e1", "chinese": "包８平５", "annote": null}, {"fen": "3rkabr1/4a4/4b1n2/p7p/6p2/2P6/P3C1P1P/3C2N2/4c1n2/1RBK1ABR1 w", "side": "red", "iccs": "h0h9", "chinese": "車二進九", "annote": null}, {"fen": "3rkabR1/4a4/4b1n2/p7p/6p2/2P6/P3C1P1P/3C2N2/4c1n2/1RBK1AB2 b", "side": "black", "iccs": "d9d2", "chinese": "車４進７", "annote": null, "fen_after": "4kabR1/4a4/4b1n2/p7p/6p2/2P6/P3C1P1P/3r2N2/4c1n2/1RBK1AB2 w"}]], "tree": {"children": [{"iccs": "h2e2", "chinese": "炮二平五", "side": "red", "annote": null, "children": [{"iccs": "h9g7", "chinese": "馬８進７", "side": "black", "annote": null, "children": [{"iccs": "h0g2", "chinese": "馬二進三", "side": "red", "annote": null, "children": [{"iccs": "i9h9", "chinese": "車９平８", "side": "black", "annote": null, "children": [{"iccs": "i0h0", "chinese": "車一平二", "side": "red", "annote": null, "children": [{"iccs": "g6g5", "chinese": "卒７進１", "side": "black", "annote": null, "children": [{"iccs": "c3c4", "chinese": "兵七進一", "side": "red", "annote": null, "children": [{"iccs": "h7h3", "chinese": "包８進４", "side": "black", "annote": null, "children": [{"iccs": "b0c2", "chinese": "馬八進七", "side": "red", "annote": null, "children": [{"iccs": "c9e7", "chinese": "象３進５", "side": "black", "annote": null, "children": [{"iccs": "e3e4", "chinese": "兵五進一", "side": "red", "annote": null, "children": [{"iccs": "d9e8", "chinese": "士４進５", "side": "black", "annote": null, "children": [{"iccs": "c2d4", "chinese": "馬七進六", "side": "red", "annote": null, "children": [{"iccs": "b7b4", "chinese": "包２進３", "side": "black", "annote": null, "children": [{"iccs": "d4c6", "chinese": "馬六進七", "side": "red", "annote": null, "children": [{"iccs": "b4e4", "chinese": "包２平５", "side": "black", "annote": null, "children": [{"iccs": "d0e1", "chinese": "仕六進五", "side": "red", "annote": null, "children": [{"iccs": "b9a7", "chinese": "馬２進１", "side": "black", "annote": null, "children": [{"iccs": "b2b4", "chinese": "炮八進二", "side": "red", "annote": null, "children": [{"iccs": "a7c6", "chinese": "馬１進３", "side": "black", "annote": null, "children": [{"iccs": "b4e4", "chinese": "炮八平五", "side": "red", "annote": null, "children": [{"iccs": "e6e5", "chinese": "卒５進１", "side": "black", "annote": null, "children": [{"iccs": "e4e3", "chinese": "前炮退一", "side": "red", "annote": null, "children": [{"iccs": "h3h1", "chinese": "包８進２", "side": "black", "annote": null, "children": [{"iccs": "a0b0", "chinese": "車九平八", "side": "red", "annote": null, "children": [{"iccs": "c6d4", "chinese": "馬３進４", "side": "black", "annote": null, "children": [{"iccs": "e2e5", "chinese": "後炮進三", "side": "red", "annote": null, "children": [{"iccs": "d4f3", "chinese": "馬４進６", "side": "black", "annote": null, "children": [{"iccs": "e5d5", "chinese": "前炮平六", "side": "red", "annote": null, "children": [{"iccs": "a9d9", "chinese": "車１平４", "side": "black", "annote": null, "children": [{"iccs": "d5d2", "chinese": "炮六退三", "side": "red", "annote": null, "children": [{"iccs": "f3g1", "chinese": "馬６進７", "side": "black", "annote": null, "children": [{"iccs": "e0d0", "chinese": "帅五平六", "side": "red", "annote": null, "children": [{"iccs": "h1e1", "chinese": "包８平５", "side": "black", "annote": null, "children": [{"iccs": "h0h9", "chinese": "車二進九", "side": "red", "annote": null, "children": [{"iccs": "d9d2", "chinese": "車４進７", "side": "black", "annote": null, "children": []}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}};
+initGamePage(GAME);
+</script>
+</body>
+</html>

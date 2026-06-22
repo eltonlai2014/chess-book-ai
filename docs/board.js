@@ -180,6 +180,13 @@ function fmtDelta(v) {
 function fmtScore(entry, sideToMove) {
   if (!entry) return { text: "?", cls: "" };
   if (entry.mate != null) {
+    // mate=0 = side-to-move is checkmated/stalemated right now (it lost). The ±M
+    // flip below is a no-op on 0, so resolve the winner explicitly: side-to-move
+    // is the loser, so red wins iff black is the side to move.
+    if (entry.mate === 0) {
+      const redWins = sideToMove === "black";
+      return { text: redWins ? "#0" : "-#0", cls: redWins ? "score-positive" : "score-negative" };
+    }
     let m = entry.mate;
     if (sideToMove === "black") m = -m;
     return { text: m > 0 ? `M${m}` : `-M${-m}`, cls: m > 0 ? "score-positive" : "score-negative" };
@@ -1228,7 +1235,12 @@ function annotateTable(vi) {
     if (!entry) return;
     const bestCn = entry.best_chinese || entry.best_iccs || "?";
     tr.querySelector(".eng-best").innerHTML = `${bestCn} <code class="tiny">${entry.best_iccs || ""}</code>`;
-    const sc = fmtScore(entry, ply.side);
+    // 分(CP): score of the position AFTER this move (the board shown on this row),
+    // per master's "分數要對應顯示盤面". 引擎首選/同?/雲 stay on the decision-point
+    // (ply.fen) above. fen_after's side-to-move is the opponent — flip the arg.
+    const afterEntry = getEntry(ply.fen_after);
+    const afterSide = ply.side === "red" ? "black" : "red";
+    const sc = afterEntry ? fmtScore(afterEntry, afterSide) : { text: "", cls: "" };
     const scCell = tr.querySelector(".score");
     scCell.textContent = sc.text;
     scCell.className = "score " + sc.cls;
