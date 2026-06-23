@@ -55,9 +55,15 @@ class CleanUciEngine:
         self._send('isready')
         self._read_until(lambda l: l == 'readyok')
 
-    def go(self, fen, depth):
+    def go(self, fen, depth, movetime=None):
         self._send(f'position fen {fen}')
-        self._send(f'go depth {depth}')
+        # movetime (ms) caps wall-time per position. Pikafish stops at whichever
+        # of depth / movetime lands first — used to stop grinding already-decided
+        # positions all the way to a deep nominal target.
+        cmd = f'go depth {depth}'
+        if movetime:
+            cmd += f' movetime {int(movetime)}'
+        self._send(cmd)
 
         score = mate = info_depth = None
         pv = []

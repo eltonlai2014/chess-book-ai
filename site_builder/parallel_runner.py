@@ -120,11 +120,14 @@ def _d22_post():
                    check=True, cwd=str(REPO))
 
 
-Job = namedtuple("Job", "name cache var depth pv_keep build_todo post")
+Job = namedtuple("Job", "name cache var depth pv_keep build_todo post movetime")
 JOBS = {
-    "d22":   Job("d22",   DEEP_JS,      "POSITIONS_DEEP",      22, 10, _d22_build_todo, _d22_post),
-    "traps": Job("traps", VERY_DEEP_JS, "POSITIONS_VERY_DEEP", 28, 16, _traps_build_todo, traps_post),
-    "d32":   Job("d32",   D32_JS,       "POSITIONS_D32",       32, 16, _d32_build_todo, d32_post),
+    "d22":   Job("d22",   DEEP_JS,      "POSITIONS_DEEP",      22, 10, _d22_build_todo, _d22_post,  None),
+    # traps(d28): cap each FEN at 120s. Decided positions stabilise by ~depth 16
+    # (~4s) but grind 80-97 min to nominal depth 28; is_valid_entry treats a
+    # time-capped entry as done so resume never re-grinds it.
+    "traps": Job("traps", VERY_DEEP_JS, "POSITIONS_VERY_DEEP", 28, 16, _traps_build_todo, traps_post, 120000),
+    "d32":   Job("d32",   D32_JS,       "POSITIONS_D32",       32, 16, _d32_build_todo, d32_post,   None),
 }
 
 
@@ -160,13 +163,15 @@ def run_worker(job, shard, num_shards, depth, threads, hash_mb, shard_out, limit
             if deadline and time.time() >= deadline:
                 print(f"[{tag}] deadline at {idx}/{len(pending)}", file=sys.stderr, flush=True)
                 break
-            res = eng.go(fen, depth)
+            res = eng.go(fen, depth, movetime=job.movetime)
+            reached = res.get("depth")
             done[fen] = {
                 "best_iccs": res.get("move"),
                 "score": res.get("score") if isinstance(res.get("score"), int) else None,
                 "mate": res.get("mate"),
                 "pv": (res.get("pv") or [])[:job.pv_keep],
-                "depth": res.get("depth") or depth,
+                "depth": reached or depth,
+                "capped": bool(job.movetime) and reached is not None and reached < depth,
             }
             if idx % 5 == 0:
                 atomic_write_text(sp, json.dumps(done, ensure_ascii=False))

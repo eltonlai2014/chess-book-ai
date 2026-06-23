@@ -70,14 +70,21 @@ def collect_trap_fens(games, shallow, deep):
 def is_valid_entry(entry, target_depth):
     if not entry:
         return False
-    if entry.get('depth') is None or entry['depth'] < target_depth:
+    d = entry.get('depth')
+    if d is None:
+        return False
+    # Time-capped entries (search hit its --movetime budget before the nominal
+    # target depth) count as DONE: re-running just hits the same cap, and the
+    # trap verdict is stable long before depth 28 — decided positions otherwise
+    # grind 80-97 min to confirm what depth ~16 (~4s) already knew.
+    if d < target_depth and not entry.get('capped'):
         return False
     # any best_iccs that parses as 4 chars is plausible — we don't legality-check
     bm = entry.get('best_iccs')
     return isinstance(bm, str) and len(bm) == 4
 
 
-def run_engine(depth, threads, hash_mb, checkpoint_every, deadline=None):
+def run_engine(depth, threads, hash_mb, checkpoint_every, deadline=None, movetime=None):
     games = json.loads((OUT_DIR / 'data' / 'games.json').read_text(encoding='utf-8'))
     shallow = load_positions(OUT_DIR / 'positions.js')
     deep = load_positions(OUT_DIR / 'positions_deep.js')
@@ -111,19 +118,22 @@ def run_engine(depth, threads, hash_mb, checkpoint_every, deadline=None):
                 save_very_deep(very_deep)
                 return very_deep
             ts = time.time()
-            res = eng.go(fen, depth)
+            res = eng.go(fen, depth, movetime=movetime)
             dt = time.time() - ts
+            reached = res.get('depth')
+            capped = bool(movetime) and reached is not None and reached < depth
             very_deep[fen] = {
                 'best_iccs': res.get('move'),
                 'score': res.get('score') if isinstance(res.get('score'), int) else None,
                 'mate': res.get('mate'),
                 'pv': (res.get('pv') or [])[:16],
-                'depth': res.get('depth') or depth,
+                'depth': reached or depth,
+                'capped': capped,
             }
             elapsed = time.time() - t0
             rate = i / elapsed if elapsed > 0 else 0
             eta = (len(todo) - i) / rate if rate > 0 else 0
-            print(f"  [{i}/{len(todo)}] {dt:6.1f}s  "
+            print(f"  [{i}/{len(todo)}] {dt:6.1f}s d{reached}{'*cap' if capped else ''}  "
                   f"score={res.get('score')}  best={res.get('move')}  "
                   f"({elapsed/60:.1f}m elapsed, eta {eta/60:.0f}m)", flush=True)
             if i % checkpoint_every == 0 or i == len(todo):
@@ -176,6 +186,10 @@ def main():
     ap.add_argument('--threads', type=int, default=4)
     ap.add_argument('--hash-mb', type=int, default=512)
     ap.add_argument('--checkpoint-every', type=int, default=5)
+    ap.add_argument('--movetime', type=int, default=120000,
+                    help='Per-FEN movetime cap in ms (0 = no cap). Stops grinding '
+                         'already-decided positions to nominal depth — the verdict '
+                         'is stable ~80 min before depth 28 ever lands. Default 120000.')
     ap.add_argument('--max-hours', type=float, default=None,
                     help='If set, exit cleanly when this many hours have elapsed '
                          '(used by the schtask wrapper to bound a one-shot run).')
@@ -189,10 +203,12 @@ def main():
     deadline_str = (time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(deadline))
                     if deadline else 'none')
     print(f"  depth={args.depth} threads={args.threads} hash={args.hash_mb}MB  "
-          f"checkpoint_every={args.checkpoint_every}  deadline={deadline_str}", flush=True)
+          f"checkpoint_every={args.checkpoint_every}  movetime={args.movetime}ms  "
+          f"deadline={deadline_str}", flush=True)
     try:
         run_engine(args.depth, args.threads, args.hash_mb,
-                   args.checkpoint_every, deadline=deadline)
+                   args.checkpoint_every, deadline=deadline,
+                   movetime=(args.movetime or None))
     except KeyboardInterrupt:
         print("[interrupt] stopped — partial cache saved", flush=True)
         return
