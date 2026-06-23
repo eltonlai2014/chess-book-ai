@@ -216,6 +216,7 @@ def scan_games(src_dir: Path):
         for line_obj in move_lines:
             board = ChessBoard(init_fen)
             plies = []
+            valid_end = True
             for mv in line_obj['moves']:
                 iccs = str(mv)
                 fen = board.to_fen()  # position BEFORE this move
@@ -233,6 +234,7 @@ def scan_games(src_dir: Path):
                         'side': side, 'iccs': iccs,
                         'chinese': f'!invalid {iccs}', 'annote': None,
                     })
+                    valid_end = False
                     break
                 board.next_turn()
                 plies.append({
@@ -242,6 +244,15 @@ def scan_games(src_dir: Path):
                     'chinese': chinese,
                     'annote': annote,
                 })
+            # Terminal (post-last-move) position — the ONE position per line not
+            # covered by any ply's pre-move fen. Store it on the last ply as
+            # fen_after so collect_fens_dfs emits it (→ gets a d12 score) and the
+            # render slice includes it. No-legal-move terminals (將死/困斃) make
+            # Pikafish return mate=0 instantly — no special-casing needed.
+            if valid_end and plies:
+                term_fen = board.to_fen()
+                plies[-1]['fen_after'] = term_fen
+                fens_needed.add(term_fen)
             variations.append(plies)
 
         games.append({
@@ -300,6 +311,12 @@ def collect_fens_dfs(games):
                 if fen and fen not in seen:
                     seen.add(fen)
                     out.append(fen)
+                # Terminal position of the line (only the last ply carries it),
+                # emitted right after its pre-move fen to keep DFS/TT locality.
+                fa = p.get('fen_after')
+                if fa and fa not in seen:
+                    seen.add(fa)
+                    out.append(fa)
     return out
 
 

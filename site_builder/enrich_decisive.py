@@ -64,6 +64,11 @@ def collect_fens_to_eval(games, shallow, full_public=False):
                     fen = p.get('fen')
                     if fen and fen in shallow:
                         out.add(fen)
+                    # Terminal (post-last-move) position — only on last ply;
+                    # eligible for d22 once it has a d12 score (fen in shallow).
+                    fa = p.get('fen_after')
+                    if fa and fa in shallow:
+                        out.add(fa)
             continue
         for plies in g['variations']:
             for pi, p in enumerate(plies):

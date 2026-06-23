@@ -1545,6 +1545,12 @@ def main():
     needed_fens = {
         p['fen'] for g in games for v in g['variations'] for p in v if p.get('fen')
     }
+    # Each line's terminal (post-last-move) position too — only the last ply
+    # carries fen_after; without this the leaf eval is filtered out and the
+    # final move's 分數欄 (which reads fen_after) shows blank.
+    needed_fens |= {
+        p['fen_after'] for g in games for v in g['variations'] for p in v if p.get('fen_after')
+    }
     positions = {f: e for f, e in positions_all.items() if f in needed_fens}
     print(f"[filter] {len(positions)} positions referenced by {len(games)} public games",
           file=sys.stderr)
@@ -1615,6 +1621,9 @@ def main():
         (GAMES_DIR / f"{slug}.html").write_text(render_game(g), encoding='utf-8')
         if not skip_enrich:
             g_fens = {p['fen'] for v in g['variations'] for p in v if p.get('fen')}
+            # Include each line's terminal (post-last-move) position so the leaf
+            # gets its eval in the slice — only the last ply carries fen_after.
+            g_fens |= {p['fen_after'] for v in g['variations'] for p in v if p.get('fen_after')}
             pv_total += save_game_positions(GAMES_DIR / f"{slug}.pv.js", enriched, g_fens)
     if skip_enrich:
         print(f"[write] {len(games)} game pages (reused {len(existing_pv)} .pv.js slices)",
