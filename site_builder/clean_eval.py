@@ -55,11 +55,22 @@ class CleanUciEngine:
         self._send('isready')
         self._read_until(lambda l: l == 'readyok')
 
-    def go(self, fen, depth, movetime=None):
+    def go(self, fen, depth, movetime=None, decisive_cp=None,
+           decisive_min_depth=18, decisive_stable=2):
+        """Search `fen` to `depth`, with two optional early-stops:
+
+          - movetime (ms): hard wall-time backstop. Pikafish stops at whichever
+            of depth / movetime lands first.
+          - decisive_cp: once a *completed* depth's |score| >= this (or any mate)
+            AND depth >= decisive_min_depth, for `decisive_stable` consecutive
+            depths, send `stop`. The position is already decided — deeper search
+            won't flip the trap verdict, so don't grind it to the nominal depth.
+            Undecided positions (|score| under the threshold) still run full depth.
+
+        Returns the usual dict plus 'stopped_early': True iff the decisive stop
+        fired (caller marks such entries done so resume doesn't re-grind them).
+        """
         self._send(f'position fen {fen}')
-        # movetime (ms) caps wall-time per position. Pikafish stops at whichever
-        # of depth / movetime lands first — used to stop grinding already-decided
-        # positions all the way to a deep nominal target.
         cmd = f'go depth {depth}'
         if movetime:
             cmd += f' movetime {int(movetime)}'
@@ -68,6 +79,9 @@ class CleanUciEngine:
         score = mate = info_depth = None
         pv = []
         bestmove_line = None
+        last_judged_depth = 0
+        decisive_run = 0
+        stopped_early = False
 
         while True:
             line = self._readline()
@@ -95,6 +109,20 @@ class CleanUciEngine:
                 info_depth = info['depth']
             if info.get('pv'):
                 pv = info['pv']
+                # Judge decisiveness on completed-depth lines only (those carry
+                # pv + the depth's final score), once per depth.
+                if (decisive_cp and not stopped_early and info_depth
+                        and info_depth != last_judged_depth):
+                    last_judged_depth = info_depth
+                    decided = (mate is not None) or (
+                        score is not None and abs(score) >= decisive_cp)
+                    if decided and info_depth >= decisive_min_depth:
+                        decisive_run += 1
+                        if decisive_run >= decisive_stable:
+                            self._send('stop')
+                            stopped_early = True
+                    else:
+                        decisive_run = 0
 
         # Parse "bestmove X" or "bestmove X ponder Y" or "bestmove (none)"
         parts = bestmove_line.split()
@@ -108,6 +136,7 @@ class CleanUciEngine:
             'mate': mate,
             'pv': pv,
             'depth': info_depth,
+            'stopped_early': stopped_early,
         }
 
     def _parse_info(self, tokens):

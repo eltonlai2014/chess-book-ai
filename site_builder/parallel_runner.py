@@ -120,14 +120,17 @@ def _d22_post():
                    check=True, cwd=str(REPO))
 
 
-Job = namedtuple("Job", "name cache var depth pv_keep build_todo post movetime")
+Job = namedtuple("Job", "name cache var depth pv_keep build_todo post movetime decisive_cp")
 JOBS = {
-    "d22":   Job("d22",   DEEP_JS,      "POSITIONS_DEEP",      22, 10, _d22_build_todo, _d22_post,  None),
-    # traps(d28): cap each FEN at 120s. Decided positions stabilise by ~depth 16
-    # (~4s) but grind 80-97 min to nominal depth 28; is_valid_entry treats a
-    # time-capped entry as done so resume never re-grinds it.
-    "traps": Job("traps", VERY_DEEP_JS, "POSITIONS_VERY_DEEP", 28, 16, _traps_build_todo, traps_post, 120000),
-    "d32":   Job("d32",   D32_JS,       "POSITIONS_D32",       32, 16, _d32_build_todo, d32_post,   None),
+    "d22":   Job("d22",   DEEP_JS,      "POSITIONS_DEEP",      22, 10, _d22_build_todo, _d22_post,  None,   None),
+    # traps(d28) / d32: decided-position early stop (|score|>=800 at depth>=18 for
+    # 2 straight completed depths) — these otherwise grind 80-97 min to the nominal
+    # depth on already-decided positions; undecided ones still run full depth.
+    # movetime is a far-out wall-time backstop. is_valid_entry treats an early-
+    # stopped entry as done so resume never re-grinds it. d22 left full — depth 22
+    # finishes fast, no multi-hour grind there.
+    "traps": Job("traps", VERY_DEEP_JS, "POSITIONS_VERY_DEEP", 28, 16, _traps_build_todo, traps_post, 600000, 800),
+    "d32":   Job("d32",   D32_JS,       "POSITIONS_D32",       32, 16, _d32_build_todo, d32_post,   600000, 800),
 }
 
 
@@ -163,7 +166,7 @@ def run_worker(job, shard, num_shards, depth, threads, hash_mb, shard_out, limit
             if deadline and time.time() >= deadline:
                 print(f"[{tag}] deadline at {idx}/{len(pending)}", file=sys.stderr, flush=True)
                 break
-            res = eng.go(fen, depth, movetime=job.movetime)
+            res = eng.go(fen, depth, movetime=job.movetime, decisive_cp=job.decisive_cp)
             reached = res.get("depth")
             done[fen] = {
                 "best_iccs": res.get("move"),
@@ -171,7 +174,8 @@ def run_worker(job, shard, num_shards, depth, threads, hash_mb, shard_out, limit
                 "mate": res.get("mate"),
                 "pv": (res.get("pv") or [])[:job.pv_keep],
                 "depth": reached or depth,
-                "capped": bool(job.movetime) and reached is not None and reached < depth,
+                "capped": bool(res.get("stopped_early")) or (
+                    bool(job.movetime) and reached is not None and reached < depth),
             }
             if idx % 5 == 0:
                 atomic_write_text(sp, json.dumps(done, ensure_ascii=False))

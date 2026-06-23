@@ -84,7 +84,8 @@ def is_valid_entry(entry, target_depth):
     return isinstance(bm, str) and len(bm) == 4
 
 
-def run_engine(depth, threads, hash_mb, checkpoint_every, deadline=None, movetime=None):
+def run_engine(depth, threads, hash_mb, checkpoint_every, deadline=None,
+               movetime=None, decisive_cp=None):
     games = json.loads((OUT_DIR / 'data' / 'games.json').read_text(encoding='utf-8'))
     shallow = load_positions(OUT_DIR / 'positions.js')
     deep = load_positions(OUT_DIR / 'positions_deep.js')
@@ -118,10 +119,11 @@ def run_engine(depth, threads, hash_mb, checkpoint_every, deadline=None, movetim
                 save_very_deep(very_deep)
                 return very_deep
             ts = time.time()
-            res = eng.go(fen, depth, movetime=movetime)
+            res = eng.go(fen, depth, movetime=movetime, decisive_cp=decisive_cp)
             dt = time.time() - ts
             reached = res.get('depth')
-            capped = bool(movetime) and reached is not None and reached < depth
+            capped = bool(res.get('stopped_early')) or (
+                bool(movetime) and reached is not None and reached < depth)
             very_deep[fen] = {
                 'best_iccs': res.get('move'),
                 'score': res.get('score') if isinstance(res.get('score'), int) else None,
@@ -186,10 +188,15 @@ def main():
     ap.add_argument('--threads', type=int, default=4)
     ap.add_argument('--hash-mb', type=int, default=512)
     ap.add_argument('--checkpoint-every', type=int, default=5)
-    ap.add_argument('--movetime', type=int, default=120000,
-                    help='Per-FEN movetime cap in ms (0 = no cap). Stops grinding '
-                         'already-decided positions to nominal depth — the verdict '
-                         'is stable ~80 min before depth 28 ever lands. Default 120000.')
+    ap.add_argument('--decisive-cp', type=int, default=800,
+                    help='Decided-position early stop: once a completed depth >=18 '
+                         'shows |score| >= this (or a mate) for 2 straight depths, '
+                         'send stop — deeper search will not flip the trap verdict. '
+                         'Undecided positions still run full depth. 0 = off. Default 800.')
+    ap.add_argument('--movetime', type=int, default=600000,
+                    help='Hard per-FEN wall-time backstop in ms (0 = none). Far-out '
+                         'safety valve; the decided-position stop normally fires '
+                         'first in seconds. Default 600000 (10 min).')
     ap.add_argument('--max-hours', type=float, default=None,
                     help='If set, exit cleanly when this many hours have elapsed '
                          '(used by the schtask wrapper to bound a one-shot run).')
@@ -203,12 +210,13 @@ def main():
     deadline_str = (time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(deadline))
                     if deadline else 'none')
     print(f"  depth={args.depth} threads={args.threads} hash={args.hash_mb}MB  "
-          f"checkpoint_every={args.checkpoint_every}  movetime={args.movetime}ms  "
-          f"deadline={deadline_str}", flush=True)
+          f"checkpoint_every={args.checkpoint_every}  decisive_cp={args.decisive_cp}  "
+          f"movetime={args.movetime}ms  deadline={deadline_str}", flush=True)
     try:
         run_engine(args.depth, args.threads, args.hash_mb,
                    args.checkpoint_every, deadline=deadline,
-                   movetime=(args.movetime or None))
+                   movetime=(args.movetime or None),
+                   decisive_cp=(args.decisive_cp or None))
     except KeyboardInterrupt:
         print("[interrupt] stopped — partial cache saved", flush=True)
         return

@@ -72,13 +72,19 @@ def collect_target_fens():
 def is_valid_entry(entry, target_depth):
     if not entry:
         return False
-    if entry.get('depth') is None or entry['depth'] < target_depth:
+    d = entry.get('depth')
+    if d is None:
+        return False
+    # Decided-position early-stop entries (depth < target but 'capped') count as
+    # done — re-running just re-decides the same way. See clean_eval.go decisive_cp.
+    if d < target_depth and not entry.get('capped'):
         return False
     bm = entry.get('best_iccs')
     return isinstance(bm, str) and len(bm) == 4
 
 
-def run_engine(depth, threads, hash_mb, checkpoint_every, deadline=None):
+def run_engine(depth, threads, hash_mb, checkpoint_every, deadline=None,
+               movetime=None, decisive_cp=None):
     d32 = _load_window_cache(D32_JS, 'POSITIONS_D32')
     candidates = collect_target_fens()
     todo = [f for f in candidates if not is_valid_entry(d32.get(f), depth)]
@@ -102,14 +108,17 @@ def run_engine(depth, threads, hash_mb, checkpoint_every, deadline=None):
                 _save_window_cache(D32_JS, 'POSITIONS_D32', d32)
                 return d32
             ts = time.time()
-            res = eng.go(fen, depth)
+            res = eng.go(fen, depth, movetime=movetime, decisive_cp=decisive_cp)
             dt = time.time() - ts
+            reached = res.get('depth')
             d32[fen] = {
                 'best_iccs': res.get('move'),
                 'score': res.get('score') if isinstance(res.get('score'), int) else None,
                 'mate': res.get('mate'),
                 'pv': (res.get('pv') or [])[:16],
-                'depth': res.get('depth') or depth,
+                'depth': reached or depth,
+                'capped': bool(res.get('stopped_early')) or (
+                    bool(movetime) and reached is not None and reached < depth),
             }
             elapsed = time.time() - t0
             rate = i / elapsed if elapsed > 0 else 0
@@ -164,6 +173,13 @@ def main():
     ap.add_argument('--threads', type=int, default=4)
     ap.add_argument('--hash-mb', type=int, default=512)
     ap.add_argument('--checkpoint-every', type=int, default=5)
+    ap.add_argument('--decisive-cp', type=int, default=800,
+                    help='Decided-position early stop (|score|>=cp at depth>=18, '
+                         '2 straight depths). Undecided positions still run to '
+                         'depth 32. 0 = off. Default 800.')
+    ap.add_argument('--movetime', type=int, default=600000,
+                    help='Hard per-FEN wall-time backstop in ms (0 = none). '
+                         'Default 600000 (10 min).')
     ap.add_argument('--max-hours', type=float, default=None)
     ap.add_argument('--no-post', action='store_true')
     args = ap.parse_args()
@@ -173,11 +189,14 @@ def main():
     deadline_str = (time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(deadline))
                     if deadline else 'none')
     print(f"  depth={args.depth} threads={args.threads} hash={args.hash_mb}MB  "
-          f"checkpoint_every={args.checkpoint_every}  deadline={deadline_str}",
+          f"checkpoint_every={args.checkpoint_every}  decisive_cp={args.decisive_cp}  "
+          f"movetime={args.movetime}ms  deadline={deadline_str}",
           flush=True)
     try:
         run_engine(args.depth, args.threads, args.hash_mb,
-                   args.checkpoint_every, deadline=deadline)
+                   args.checkpoint_every, deadline=deadline,
+                   movetime=(args.movetime or None),
+                   decisive_cp=(args.decisive_cp or None))
     except KeyboardInterrupt:
         print("[interrupt] stopped — partial cache saved", flush=True)
         return
