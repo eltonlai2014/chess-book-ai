@@ -247,13 +247,29 @@ def main():
                 check=True, cwd=str(REPO))
 
 
+def _refresh_sqlite_best_effort():
+    """Rebuild output/positions.db for the sibling chess-book-editor — best-effort.
+
+    If the editor backend holds positions.db open, migrate's DB_PATH.unlink()
+    raises WinError 32. We swallow it so a DB lock can never abort the commit/
+    push that ran *before* this call (the nightly bug that silently blocked
+    deploys for two nights, fixed 2026-06-24). The site is already deployed;
+    rebuild the DB manually once the editor is free.
+    """
+    print("[post] migrate_to_sqlite.py (best-effort)", flush=True)
+    try:
+        subprocess.run([sys.executable, str(REPO / 'site_builder' / 'migrate_to_sqlite.py')],
+                       check=True, cwd=str(REPO))
+    except subprocess.CalledProcessError as e:
+        print(f"[post] WARNING: migrate_to_sqlite failed ({e}); positions.db likely "
+              f"locked by chess-book-editor — skipped, rebuild manually when free.",
+              flush=True)
+
+
 def post_render_and_push(partial: bool):
-    """Refresh public site, rebuild SQLite eval DB, commit + push."""
+    """Refresh public site, commit + push, then best-effort rebuild SQLite eval DB."""
     print("[post] render_site.py", flush=True)
     subprocess.run([sys.executable, str(REPO / 'site_builder' / 'render_site.py')],
-                   check=True, cwd=str(REPO))
-    print("[post] migrate_to_sqlite.py", flush=True)
-    subprocess.run([sys.executable, str(REPO / 'site_builder' / 'migrate_to_sqlite.py')],
                    check=True, cwd=str(REPO))
     print("[post] git add", flush=True)
     subprocess.run(['git', 'add', 'docs/', 'output/site/', 'DEEP_STATUS.md'],
@@ -269,11 +285,12 @@ def post_render_and_push(partial: bool):
         "Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
     )
     rc = subprocess.run(['git', 'commit', '-m', msg], cwd=str(REPO))
-    if rc.returncode != 0:
+    if rc.returncode == 0:
+        print("[post] git push", flush=True)
+        subprocess.run(['git', 'push'], check=True, cwd=str(REPO))
+    else:
         print("[post] nothing to commit, skipping push", flush=True)
-        return
-    print("[post] git push", flush=True)
-    subprocess.run(['git', 'push'], check=True, cwd=str(REPO))
+    _refresh_sqlite_best_effort()
     print("[post] done", flush=True)
 
 
