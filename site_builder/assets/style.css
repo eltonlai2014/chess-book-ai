@@ -595,7 +595,7 @@ body[data-trap-filter="pending"] tr.trap-row:not(.trap-pending) {
   vertical-align: middle;
   line-height: 1.4;
 }
-.traps-table tbody tr:last-child td { border-bottom: none; }
+.traps-table > tbody:last-child > tr:last-child td { border-bottom: none; }
 .traps-table tbody tr:nth-child(even) { background: rgba(0, 0, 0, 0.015); }
 .traps-table tbody tr:hover { background: var(--accent-soft); }
 .traps-table .vp     { font-family: var(--font-mono); white-space: nowrap; width: 130px; }
@@ -625,6 +625,47 @@ body[data-trap-filter="pending"] tr.trap-row:not(.trap-pending) {
 .traps-table .gain.vdeep.confirm { color: var(--cool); font-weight: 700; }
 .traps-table .gain.vdeep.mild    { color: var(--note-deep); }
 .traps-table .gain.vdeep.reject  { color: var(--accent); font-weight: 400; }
+
+/* ---- collapsible file blocks + variation groups (traps / brilliants) ---- */
+.collapse-ctrl {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+}
+/* file block is now a <details>; turn the summary into a clickable header bar
+   and drop the browser's default disclosure triangle (we draw our own caret). */
+details.file-block > summary.file-head {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+details.file-block > summary.file-head::-webkit-details-marker { display: none; }
+.caret {
+  display: inline-block;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--fg-faint);
+  transition: transform 0.12s ease;
+}
+.file-head .file-caret { flex: 0 0 auto; }
+details.file-block:not([open]) > summary .file-caret { transform: rotate(-90deg); }
+
+/* variation-level collapse — a summary row spanning the whole table width */
+.traps-table .var-head { cursor: pointer; user-select: none; }
+.traps-table .var-head > .var-toggle {
+  background: var(--bg-soft);
+  color: var(--fg-dim);
+  padding: 3px var(--space-3);
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--bg-soft);
+}
+.traps-table .var-head:hover > .var-toggle { background: var(--accent-soft); }
+.var-head .var-label { font-family: var(--font-mono); font-weight: 600; margin: 0 6px; }
+.var-head .var-count { font-size: 10.5px; color: var(--fg-faint); }
+.var-group.collapsed > tr:not(.var-head) { display: none; }
+.var-group.collapsed .caret { transform: rotate(-90deg); }
 
 /* Index folder badge + header link parity with trap variants. */
 .game-list .badge.badge-brilliant,

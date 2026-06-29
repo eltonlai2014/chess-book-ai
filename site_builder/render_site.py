@@ -312,6 +312,7 @@ TRAPS_HTML = """<!DOCTYPE html>
   <button class="filter-btn" data-filter="reject">✗ reject（depth-28 翻案）</button>
   <button class="filter-btn" data-filter="pending">? 未驗證</button>
 </div>
+{collapse_controls}
 <div class="traps-legend">
   <span class="leg-key">欄位</span>
   <span><span class="leg-label">變例·步</span><span class="leg-hint">v / 步序，點擊跳到局面</span></span>
@@ -326,28 +327,33 @@ TRAPS_HTML = """<!DOCTYPE html>
 <script>
 (function () {{
   const root = document.body;
+  // Hide any container (variation tbody, file <details>, folder section) that
+  // has no row matching the active verdict filter. Class-based so it works even
+  // while a file is collapsed (querySelector still sees its rows in the DOM).
+  function applyVis(f) {{
+    const sel = (f === 'all') ? null : 'tr.trap-row.trap-' + f;
+    document.querySelectorAll('.var-group').forEach((vg) => {{
+      vg.style.display = (!sel || vg.querySelector(sel)) ? '' : 'none';
+    }});
+    document.querySelectorAll('.file-block').forEach((blk) => {{
+      blk.style.display = (!sel || blk.querySelector(sel)) ? '' : 'none';
+    }});
+    document.querySelectorAll('.folder-block').forEach((blk) => {{
+      blk.style.display = (!sel || blk.querySelector(sel)) ? '' : 'none';
+    }});
+  }}
   document.querySelectorAll('.traps-filter .filter-btn').forEach((b) => {{
     b.addEventListener('click', () => {{
       const f = b.dataset.filter;
       root.dataset.trapFilter = f;
       document.querySelectorAll('.traps-filter .filter-btn').forEach((x) =>
         x.classList.toggle('active', x === b));
-      // After filtering, hide file-blocks whose visible rows count == 0,
-      // and hide folder-blocks whose visible file-blocks count == 0.
-      document.querySelectorAll('.file-block').forEach((blk) => {{
-        const anyVisible = Array.from(blk.querySelectorAll('tr.trap-row'))
-          .some((tr) => getComputedStyle(tr).display !== 'none');
-        blk.style.display = anyVisible ? '' : 'none';
-      }});
-      document.querySelectorAll('.folder-block').forEach((blk) => {{
-        const anyVisible = Array.from(blk.querySelectorAll('.file-block'))
-          .some((fb) => fb.style.display !== 'none');
-        blk.style.display = anyVisible ? '' : 'none';
-      }});
+      applyVis(f);
     }});
   }});
 }})();
 </script>
+{collapse_js}
 </main>
 </body>
 </html>
@@ -374,6 +380,7 @@ BRILLIANTS_HTML = """<!DOCTYPE html>
 <p class="meta"><a class="back" href="index.html">← 回到列表</a> · 共 {n_total} 個妙手候選（gain {gain_min}-{gain_max}cp，超過 {gain_max} 多為 horizon-effect 雜訊，第 16 步起）</p>
 </header>
 <main class="traps-page">
+{collapse_controls}
 <div class="traps-legend">
   <span class="leg-key">欄位</span>
   <span><span class="leg-label">變例·步</span><span class="leg-hint">v / 步序，點擊跳到局面</span></span>
@@ -385,10 +392,54 @@ BRILLIANTS_HTML = """<!DOCTYPE html>
   <span><span class="leg-label">原註解</span><span class="leg-hint">XQF 內既有註解</span></span>
 </div>
 {sections}
+{collapse_js}
 </main>
 </body>
 </html>
 """
+
+# Shared between traps + brilliants: a one-click expand/collapse-all toolbar and
+# the JS that drives the two collapse layers (file <details> + variation tbody).
+# Passed in via .format(collapse_controls=…, collapse_js=…) so the braces inside
+# the JS stay single (they are a substitution VALUE, not part of the template).
+COLLAPSE_CONTROLS = (
+    '<div class="collapse-ctrl">'
+    '<span class="filter-label">列表</span>'
+    '<button class="filter-btn" id="expandAll">全部展開</button>'
+    '<button class="filter-btn" id="collapseAll">全部收合</button>'
+    '</div>'
+)
+
+COLLAPSE_JS = """<script>
+(function () {
+  // variation-level collapse (event delegation on the var-head summary row)
+  document.addEventListener('click', function (e) {
+    var head = e.target.closest ? e.target.closest('.var-head') : null;
+    if (head && head.parentNode) head.parentNode.classList.toggle('collapsed');
+  });
+  // global expand / collapse-all for the per-file <details>
+  function setAll(open) {
+    document.querySelectorAll('details.file-block').forEach(function (d) { d.open = open; });
+  }
+  var ea = document.getElementById('expandAll');
+  var ca = document.getElementById('collapseAll');
+  if (ea) ea.addEventListener('click', function () { setAll(true); });
+  if (ca) ca.addEventListener('click', function () { setAll(false); });
+  // deep-link safety: open any <details> ancestor of the hash target, then jump
+  function revealHash() {
+    if (!location.hash) return;
+    var el = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    var node = el;
+    while (node) {
+      if (node.tagName === 'DETAILS') node.open = true;
+      node = node.parentElement;
+    }
+    if (el && el.scrollIntoView) el.scrollIntoView();
+  }
+  window.addEventListener('hashchange', revealHash);
+  revealHash();
+})();
+</script>"""
 
 BROKEN_ANNOTES_HTML = """<!DOCTYPE html>
 <html lang="zh-Hant">
@@ -993,6 +1044,43 @@ def _file_anchor(file: str) -> str:
     return 'file-' + ascii_slug(file).removeprefix('game-')
 
 
+def _var_grouped_body(entries: list, n_cols: int) -> str:
+    """Build the <tbody> blocks for one file's trap / brilliant table.
+
+    `entries` is an ordered list of (vi, <tr>-html) tuples (already sorted by
+    vi, pi so same-variation rows are consecutive).
+
+    - If the file has only ONE variation, every row lives in a single plain
+      <tbody> with no per-variation collapse — the file-level <details> already
+      hides the whole list, so a lone variation toggle would be redundant
+      (master's rule: 全局只有一個變例的，該變例不用收合).
+    - With >=2 variations, each variation that spans >=2 plies gets a clickable
+      summary row (var-head) so the whole variation can be folded away;
+      single-ply variations stay as a plain one-row <tbody>.
+    """
+    from itertools import groupby
+    distinct = {vi for vi, _ in entries}
+    if len(distinct) <= 1:
+        return f'<tbody>{"".join(html for _, html in entries)}</tbody>'
+    out = []
+    for vi, grp in groupby(entries, key=lambda e: e[0]):
+        grp = list(grp)
+        body = ''.join(html for _, html in grp)
+        if len(grp) >= 2:
+            head = (
+                f'<tr class="var-head">'
+                f'<td class="var-toggle" colspan="{n_cols}">'
+                f'<span class="caret">▾</span>'
+                f'<span class="var-label">v{vi + 1}</span>'
+                f'<span class="var-count">{len(grp)} 步</span>'
+                f'</td></tr>'
+            )
+            out.append(f'<tbody class="var-group">{head}{body}</tbody>')
+        else:
+            out.append(f'<tbody>{body}</tbody>')
+    return ''.join(out)
+
+
 def render_traps_page(games: list, stats_by_file: dict, chessdb: dict | None = None) -> str:
     """Global trap list grouped by 目錄 → 棋譜.
 
@@ -1066,7 +1154,7 @@ def render_traps_page(games: list, stats_by_file: dict, chessdb: dict | None = N
                 src = t.get('source', 'd22')
                 src_badge = (' <span class="src-d28" title="d22 沒抓到，d28 才看出的隱形陷阱">隱</span>'
                              if src == 'd28' else '')
-                rows.append(
+                row_html = (
                     f'<tr class="trap-row trap-{verdict} src-{src}">'
                     f'<td class="vp"><a href="{href}">v{t["vi"] + 1}·第{t["pi"] + 1}步</a>{src_badge}</td>'
                     f'<td class="side {t["side"]}">{side_label}</td>'
@@ -1078,14 +1166,16 @@ def render_traps_page(games: list, stats_by_file: dict, chessdb: dict | None = N
                     f'<td class="annote">{annote_cell}</td>'
                     f'</tr>'
                 )
+                rows.append((t['vi'], row_html))
             file_blocks.append(
-                f'<section class="file-block" id="{file_id}">'
-                f'<h3 class="file-head">'
+                f'<details class="file-block" id="{file_id}" open>'
+                f'<summary class="file-head">'
+                f'<span class="caret file-caret">▾</span>'
                 f'<a class="file-link" href="games/{slug}.html">{escape_html(title)}</a>'
                 f'<span class="file-count">{len(traps)} 筆</span>'
-                f'</h3>'
-                f'<table class="traps-table"><tbody>{"".join(rows)}</tbody></table>'
-                f'</section>'
+                f'</summary>'
+                f'<table class="traps-table">{_var_grouped_body(rows, 7)}</table>'
+                f'</details>'
             )
 
         sections_html.append(
@@ -1113,6 +1203,8 @@ def render_traps_page(games: list, stats_by_file: dict, chessdb: dict | None = N
         n_traps=n_total,
         verdict_breakdown=verdict_breakdown,
         sections=body,
+        collapse_controls=COLLAPSE_CONTROLS,
+        collapse_js=COLLAPSE_JS,
     )
 
 
@@ -1170,7 +1262,7 @@ def render_brilliants_page(games: list, stats_by_file: dict) -> str:
                     vd_cell = f'<td class="gain vdeep {vd_cls}">{vg:+d}</td>'
                 else:
                     vd_cell = '<td class="gain vdeep"><span class="dim">—</span></td>'
-                rows.append(
+                row_html = (
                     f'<tr>'
                     f'<td class="vp"><a href="{href}">v{b["vi"] + 1}·第{b["pi"] + 1}步</a></td>'
                     f'<td class="side {b["side"]}">{side_label}</td>'
@@ -1182,14 +1274,16 @@ def render_brilliants_page(games: list, stats_by_file: dict) -> str:
                     f'<td class="annote">{annote_cell}</td>'
                     f'</tr>'
                 )
+                rows.append((b['vi'], row_html))
             file_blocks.append(
-                f'<section class="file-block" id="{file_id}">'
-                f'<h3 class="file-head">'
+                f'<details class="file-block" id="{file_id}" open>'
+                f'<summary class="file-head">'
+                f'<span class="caret file-caret">▾</span>'
                 f'<a class="file-link" href="games/{slug}.html">{escape_html(title)}</a>'
                 f'<span class="file-count">{len(items)} 筆</span>'
-                f'</h3>'
-                f'<table class="traps-table"><tbody>{"".join(rows)}</tbody></table>'
-                f'</section>'
+                f'</summary>'
+                f'<table class="traps-table">{_var_grouped_body(rows, 7)}</table>'
+                f'</details>'
             )
 
         sections_html.append(
@@ -1207,6 +1301,8 @@ def render_brilliants_page(games: list, stats_by_file: dict) -> str:
         gain_min=BRILLIANT_MIN,
         gain_max=BRILLIANT_MAX,
         sections=body,
+        collapse_controls=COLLAPSE_CONTROLS,
+        collapse_js=COLLAPSE_JS,
     )
 
 
