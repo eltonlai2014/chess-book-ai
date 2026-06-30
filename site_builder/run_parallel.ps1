@@ -1,16 +1,20 @@
-# Generic parallel deep-eval wrapper — d22 / traps(d28) / d32 via parallel_runner.py.
+# Generic parallel deep-eval wrapper — d22 / traps(d28) / d32 / d28book via parallel_runner.py.
 # Replaces run_enrich_d22_parallel.ps1. NON-WORKING-DAY use (weekday CPU stays free).
 #
 #   run_parallel.ps1 -Job traps           # d28 trap-pair verify (3x2 threads)
-#   run_parallel.ps1 -Job d32             # d32 順包 cross-check
+#   run_parallel.ps1 -Job d32             # d32 cross-check (順包 + 半途列包)
 #   run_parallel.ps1 -Job d22             # full-public d22 backlog blitz
+#   run_parallel.ps1 -Job d28book         # by-book exhaustive d28 sweep — 順包 62k backlog
+#                                         #   (priority order 順包→牛頭滾→半途列包; weekend blitz)
 #   run_parallel.ps1 -Job traps -Threads 4 -NumShards 2   # less thread-count drift
 #
 # Each worker writes its own shard in output/_shards; the orchestrator merges once
 # then runs the job's post (render/migrate/push). Runs to completion (no --max-hours).
+# d28book shares positions_very_deep.js with the weeknight ChessBookVerifyD28Shunbao
+# task, so a weekend blitz and the 22:30 single-instance run advance the same cache.
 
 param(
-  [Parameter(Mandatory = $true)][ValidateSet('d22', 'traps', 'd32')][string]$Job,
+  [Parameter(Mandatory = $true)][ValidateSet('d22', 'traps', 'd32', 'd28book')][string]$Job,
   [int]$NumShards = 3,
   [int]$Threads = 2
 )

@@ -57,6 +57,9 @@ from verify_traps import (  # noqa: E402
 from verify_d32 import (  # noqa: E402
     collect_target_fens, post_render_and_push as d32_post, D32_JS,
 )
+from verify_d28_shunbao import (  # noqa: E402
+    collect_target_fens as d28book_collect, post_render_and_push as d28book_post,
+)
 from enrich_depth import load_positions  # noqa: E402
 from clean_eval import CleanUciEngine  # noqa: E402
 
@@ -109,6 +112,16 @@ def _d32_build_todo(depth):
     return [f for f in collect_target_fens() if not is_valid_entry(cache.get(f), depth)]
 
 
+def _d28book_build_todo(depth):
+    """By-book exhaustive d28 sweep: every ply>=15 FEN in the TARGET_REL_KEYWORDS
+    books (順包 / 牛頭滾 / 半途列包), priority-ordered (順包 first), not yet at
+    depth. Shares positions_very_deep.js with the nightly verify_d28_shunbao run,
+    so the weekend parallel blitz and the weeknight single-instance sweep advance
+    the SAME cache — merge keeps higher-depth, no double work."""
+    cache = load_positions(VERY_DEEP_JS)
+    return [f for f in d28book_collect() if not is_valid_entry(cache.get(f), depth)]
+
+
 def _d22_post():
     """render+migrate+push, then (if the sweep just cleared) auto d12 recompute."""
     _enrich_post(partial=False)
@@ -131,6 +144,9 @@ JOBS = {
     # finishes fast, no multi-hour grind there.
     "traps": Job("traps", VERY_DEEP_JS, "POSITIONS_VERY_DEEP", 28, 16, _traps_build_todo, traps_post, 600000, 800),
     "d32":   Job("d32",   D32_JS,       "POSITIONS_D32",       32, 16, _d32_build_todo, d32_post,   600000, 800),
+    # by-book exhaustive d28 sweep (順包 backlog blitz) — same cache as 'traps'
+    # but a far larger work-list (every ply>=15 FEN, not just flagged trap pairs).
+    "d28book": Job("d28book", VERY_DEEP_JS, "POSITIONS_VERY_DEEP", 28, 16, _d28book_build_todo, d28book_post, 600000, 800),
 }
 
 
