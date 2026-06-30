@@ -26,11 +26,15 @@ OUT_DIR = REPO / "output" / "site"
 VERY_DEEP_JS = OUT_DIR / "positions_very_deep.js"
 POSITIONS_JS = OUT_DIR / "positions.js"
 
-# Substring-match against each game's rel_path. '順包\\' picks up every file
-# under the 順包/ subdirectory (2026-05-31: 5 files — 順包兩頭蛇對雙橫車,
-# 順包直車3兵對橫車邊馬, 順包直車3兵對橫車3卒, 順包直車3兵對橫車4進5,
-# 順砲橫車對直車). 牛頭滾 lives at the top level.
-TARGET_REL_KEYWORDS = ('順包\\', '牛頭滾')
+# Substring-match against each game's rel_path. Each keyword picks up every
+# file under that subdirectory:
+#   '順包\\'     — 5 files (順包兩頭蛇對雙橫車, 順包直車3兵對橫車邊馬,
+#                  順包直車3兵對橫車3卒, 順包直車3兵對橫車4進5, 順砲橫車對直車)
+#   '牛頭滾'      — 2 files at the top level
+#   '半途列包\\' — 7 files (added 2026-06-30; 4187 FENs, ~3.7k new d28 candidates)
+# Resume-safe across edits: already-evaluated FENs are skipped, so appending a
+# keyword just queues that book's FENs.
+TARGET_REL_KEYWORDS = ('順包\\', '牛頭滾', '半途列包\\')
 SKIP_OPENING_PLIES = 15  # mirror enrich_decisive / verify_traps / render_site
 DECISIVE_CUTOFF = 500    # mirror enrich_decisive — stop d28 sweep past first |d12|>500 ply
 
@@ -64,44 +68,59 @@ def _score_cp(entry):
 def collect_target_fens():
     """Unique FENs in target books, ply≥15, walking each variation up to (and
     including) the first ply where |d12 score| > DECISIVE_CUTOFF — past that,
-    further plies are skipped (master policy: 分數明顯大於 500 的後續不必跑深)."""
+    further plies are skipped (master policy: 分數明顯大於 500 的後續不必跑深).
+
+    Ordered by TARGET_REL_KEYWORDS *priority* (順包 first, then 牛頭滾, then
+    半途列包), NOT globally FEN-sorted: a grown earlier book is cleared before a
+    later one. Master's 2026-06-30 call — finish 順包's grown ~62k backlog
+    before starting 半途列包, instead of interleaving and diluting both."""
     games = json.loads((OUT_DIR / 'data' / 'games.json').read_text(encoding='utf-8'))
     shallow = _load_shallow()
-    out = set()
-    for g in games:
-        rel = g.get('rel_path', '') or ''
-        if not any(t in rel for t in TARGET_REL_KEYWORDS):
-            continue
-        for plies in g['variations']:
-            for pi, p in enumerate(plies):
-                fen = p.get('fen')
-                if not fen:
-                    continue
-                sc = _score_cp(shallow.get(fen))
-                if pi >= SKIP_OPENING_PLIES:
-                    out.add(fen)
-                if sc is not None and abs(sc) > DECISIVE_CUTOFF:
-                    break
-    return sorted(out)
+    ordered = []
+    seen = set()
+    for kw in TARGET_REL_KEYWORDS:          # keyword order == work priority
+        for g in games:
+            rel = g.get('rel_path', '') or ''
+            if kw not in rel:
+                continue
+            for plies in g['variations']:
+                for pi, p in enumerate(plies):
+                    fen = p.get('fen')
+                    if not fen:
+                        continue
+                    sc = _score_cp(shallow.get(fen))
+                    if pi >= SKIP_OPENING_PLIES and fen not in seen:
+                        seen.add(fen)
+                        ordered.append(fen)
+                    if sc is not None and abs(sc) > DECISIVE_CUTOFF:
+                        break
+    return ordered
 
 
 def is_valid_entry(entry, target_depth):
     if not entry:
         return False
-    if entry.get('depth') is None or entry['depth'] < target_depth:
+    d = entry.get('depth')
+    if d is None:
+        return False
+    # Decided-position early-stop entries (depth < target but 'capped') count as
+    # done — re-running just re-decides the same way. Mirror verify_d32 /
+    # master's 2026-06-23 score-gated early-stop policy (commit ce7c9c0).
+    if d < target_depth and not entry.get('capped'):
         return False
     bm = entry.get('best_iccs')
     return isinstance(bm, str) and len(bm) == 4
 
 
-def run_engine(depth, threads, hash_mb, checkpoint_every, deadline=None):
+def run_engine(depth, threads, hash_mb, checkpoint_every, deadline=None,
+               movetime=None, decisive_cp=None):
     very_deep = _load(VERY_DEEP_JS, 'POSITIONS_VERY_DEEP')
     candidates = collect_target_fens()
     todo = [f for f in candidates if not is_valid_entry(very_deep.get(f), depth)]
-    print(f"[d28-順包] {len(candidates)} candidates / {len(todo)} new at depth {depth}",
+    print(f"[d28-sweep] {len(candidates)} candidates / {len(todo)} new at depth {depth}",
           flush=True)
     if not todo:
-        print("[d28-順包] nothing to do", flush=True)
+        print("[d28-sweep] nothing to do", flush=True)
         return very_deep
 
     eng = CleanUciEngine(str(EXE))
@@ -118,14 +137,17 @@ def run_engine(depth, threads, hash_mb, checkpoint_every, deadline=None):
                 _save(VERY_DEEP_JS, 'POSITIONS_VERY_DEEP', very_deep)
                 return very_deep
             ts = time.time()
-            res = eng.go(fen, depth)
+            res = eng.go(fen, depth, movetime=movetime, decisive_cp=decisive_cp)
             dt = time.time() - ts
+            reached = res.get('depth')
             very_deep[fen] = {
                 'best_iccs': res.get('move'),
                 'score': res.get('score') if isinstance(res.get('score'), int) else None,
                 'mate': res.get('mate'),
                 'pv': (res.get('pv') or [])[:16],
-                'depth': res.get('depth') or depth,
+                'depth': reached or depth,
+                'capped': bool(res.get('stopped_early')) or (
+                    bool(movetime) and reached is not None and reached < depth),
             }
             elapsed = time.time() - t0
             rate = i / elapsed if elapsed > 0 else 0
@@ -156,14 +178,14 @@ def post_render_and_push():
     subprocess.run(['git', 'add', 'docs/', 'output/site/', 'DEEP_STATUS.md'],
                    check=True, cwd=str(REPO))
     msg = (
-        "Full depth-28 sweep on 順包 two books — nightly progress\n"
+        "Full depth-28 sweep on targeted books — nightly progress\n"
         "\n"
-        "Extends positions_very_deep.js with every ply-≥15 FEN in\n"
-        "順包直車3兵對橫車邊馬 and 順包兩頭蛇對雙橫車, not just the\n"
-        "depth-22-detected traps. Any new trap that the deeper search\n"
-        "surfaces will appear in traps.html on next render.\n"
+        "Extends positions_very_deep.js with every ply-≥15 FEN in the\n"
+        "TARGET_REL_KEYWORDS books (順包 / 牛頭滾 / 半途列包), not just the\n"
+        "depth-22-detected traps. Any new trap the deeper search surfaces\n"
+        "appears in traps.html on next render.\n"
         "\n"
-        "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+        "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
     )
     rc = subprocess.run(['git', 'commit', '-m', msg], cwd=str(REPO))
     if rc.returncode != 0:
@@ -180,6 +202,14 @@ def main():
     ap.add_argument('--threads', type=int, default=4)
     ap.add_argument('--hash-mb', type=int, default=512)
     ap.add_argument('--checkpoint-every', type=int, default=5)
+    ap.add_argument('--decisive-cp', type=int, default=800,
+                    help='Decided-position early stop (|score|>=cp at depth>=18, '
+                         '2 straight depths). Undecided positions still run to '
+                         'target depth. 0 = off. Mirrors verify_d32 / 2026-06-23 '
+                         'policy. Default 800.')
+    ap.add_argument('--movetime', type=int, default=600000,
+                    help='Hard per-FEN wall-time backstop in ms (0 = none). '
+                         'Default 600000 (10 min).')
     ap.add_argument('--max-hours', type=float, default=None)
     ap.add_argument('--no-post', action='store_true')
     args = ap.parse_args()
@@ -190,11 +220,14 @@ def main():
     deadline_str = (time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(deadline))
                     if deadline else 'none')
     print(f"  depth={args.depth} threads={args.threads} hash={args.hash_mb}MB  "
-          f"checkpoint_every={args.checkpoint_every}  deadline={deadline_str}",
+          f"checkpoint_every={args.checkpoint_every}  decisive_cp={args.decisive_cp}  "
+          f"movetime={args.movetime}ms  deadline={deadline_str}",
           flush=True)
     try:
         run_engine(args.depth, args.threads, args.hash_mb,
-                   args.checkpoint_every, deadline=deadline)
+                   args.checkpoint_every, deadline=deadline,
+                   movetime=(args.movetime or None),
+                   decisive_cp=(args.decisive_cp or None))
     except KeyboardInterrupt:
         print("[interrupt] stopped — partial cache saved", flush=True)
         return

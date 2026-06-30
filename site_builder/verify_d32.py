@@ -28,9 +28,11 @@ OUT_DIR = REPO / "output" / "site"
 VERY_DEEP_JS = OUT_DIR / "positions_very_deep.js"
 D32_JS = OUT_DIR / "positions_d32.js"
 
-# Substring-match against rel_path. '順包\\' covers every file under 順包/
-# (2026-05-31: 5 files). Kept in sync with verify_d28_shunbao.py.
-TARGET_REL_KEYWORDS = ('順包\\',)
+# Substring-match against rel_path. Cross-checks at d32 every d28-done FEN in
+# these books. Kept in sync with verify_d28_shunbao.py's keyword list.
+#   '順包\\'     — 5 files
+#   '半途列包\\' — 7 files (added 2026-06-30, once its d28 sweep produces entries)
+TARGET_REL_KEYWORDS = ('順包\\', '半途列包\\')
 
 
 def _load_window_cache(path, var_name):
@@ -163,15 +165,15 @@ def post_render_and_push():
     subprocess.run(['git', 'add', str(D32_JS.relative_to(REPO))],
                    check=True, cwd=str(REPO))
     msg = (
-        "Cross-check depth-28 verdicts at depth 32 (順包 two files)\n"
+        "Cross-check depth-28 verdicts at depth 32 (targeted books)\n"
         "\n"
-        "Re-evaluates the 56 depth-28 FENs that live in 順包直車3兵對橫車邊馬\n"
-        "and 順包兩頭蛇對雙橫車 at depth 32 to test whether depth-28 confirm/\n"
-        "reject classifications are stable. Commits positions_d32.js; also\n"
-        "rebuilds the local output/positions.db (gitignored) so the sibling\n"
+        "Re-evaluates every depth-28 FEN in the TARGET_REL_KEYWORDS books\n"
+        "(順包 / 半途列包) at depth 32 to test whether depth-28 confirm/reject\n"
+        "classifications are stable. Commits positions_d32.js; also rebuilds\n"
+        "the local output/positions.db (gitignored) so the sibling\n"
         "chess-book-editor sees fresh evals. UI in this repo not yet plumbed.\n"
         "\n"
-        "Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+        "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
     )
     rc = subprocess.run(['git', 'commit', '-m', msg], cwd=str(REPO))
     if rc.returncode == 0:
