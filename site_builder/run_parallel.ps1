@@ -16,7 +16,8 @@
 param(
   [Parameter(Mandatory = $true)][ValidateSet('d22', 'traps', 'd32', 'd28book')][string]$Job,
   [int]$NumShards = 3,
-  [int]$Threads = 2
+  [int]$Threads = 2,
+  [double]$MaxHours = 0   # >0 => self-deadline; workers stop cleanly, orchestrator still merges+posts
 )
 
 Set-Location 'd:\Elton\TestArea\chess-book-ai'
@@ -28,11 +29,16 @@ powercfg /change hibernate-timeout-ac 0 2>&1 | Out-Null
 
 $ts = Get-Date -Format 'yyyy-MM-dd_HHmmss'
 $log = "output/parallel_${Job}_$ts.log"
-"=== parallel $Job start $ts ($NumShards shards x $Threads threads) ===" | Out-File -FilePath $log -Encoding utf8
+
+$pyArgs = @('site_builder\parallel_runner.py',
+  '--job', $Job, '--num-shards', $NumShards, '--threads', $Threads,
+  '--shard-dir', 'output/_shards')
+if ($MaxHours -gt 0) { $pyArgs += @('--max-hours', $MaxHours) }
+
+"=== parallel $Job start $ts ($NumShards shards x $Threads threads, max-hours=$MaxHours) ===" | Out-File -FilePath $log -Encoding utf8
 
 try {
-  .\.venv\Scripts\python.exe site_builder\parallel_runner.py `
-    --job $Job --num-shards $NumShards --threads $Threads --shard-dir output/_shards `
+  .\.venv\Scripts\python.exe @pyArgs `
     *>&1 | Out-File -FilePath $log -Encoding utf8 -Append
 } finally {
   powercfg /change standby-timeout-ac 30   2>&1 | Out-Null
