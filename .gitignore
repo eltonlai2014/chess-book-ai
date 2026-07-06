@@ -27,6 +27,16 @@ output/site/positions_single_test.js
 # aids — regenerable from any FEN, not source).
 output/fen_shots/
 
+# parallel_runner.py worker checkpoints — transient shard state, merged into
+# positions_very_deep.js (which IS committed) at the end of each run and
+# regenerated on every blitz. Never for the repo.
+output/_shards/
+
+# Windows scheduled-task XML exports (schtasks /query /xml). Machine-specific
+# registration snapshots; the versioned automation is the site_builder/*.ps1
+# wrappers, not these.
+output/*.xml
+
 # One-shot guard marker for enrich's full d12 DFS recompute. Machine-local
 # state, must persist but never be committed — never delete it (see memory
 # project_d12_recompute_marker).
