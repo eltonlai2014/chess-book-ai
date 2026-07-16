@@ -11,12 +11,12 @@
 
 | 範圍 | 檔數 | 備註 |
 |---|---:|---|
-| 全庫 (XQF on disk) | 866 | |
-| dedupe 後 (build_data 收的) | **864** | 兩對撞名留乾淨版本 |
-| 公開站 (`docs/` & GitHub Pages) | **42** | `PUBLIC_EXCLUDE_KEYWORDS = ('中貴棋譜',)` |
+| 全庫 (XQF on disk) | 886 | |
+| dedupe 後 (build_data 收的) | **884** | 兩對撞名留乾淨版本（皆在中貴棋譜/）|
+| 公開站 (`docs/` & GitHub Pages) | **62** | `PUBLIC_EXCLUDE_KEYWORDS = ('中貴棋譜',)` |
 | 本地保留分析 | **822** | `中貴棋譜/` 子樹（梅花譜、過宮炮、後手順包局、後手河頭堡壘、屏風馬勝五七炮進三兵、陽信名人象棋賽…）|
 
-公開站排除這 822 個實戰對局是因為 `docs/data/games.json` 全量會到 115 MB（過 GitHub 100 MB 硬限）+ 沖淡開局陷阱焦點。本地 SQLite (`positions.db`) 仍包含全部 864 games 的 evals — 供 sibling `chess-book-editor` 讀。
+公開站排除這 822 個實戰對局是因為 `docs/data/games.json` 全量會到 115 MB（過 GitHub 100 MB 硬限）+ 沖淡開局陷阱焦點。本地 SQLite (`positions.db`) 仍包含全部 884 games 的 evals — 供 sibling `chess-book-editor` 讀。
 
 ## 二、各深度覆蓋率
 
@@ -24,15 +24,15 @@ unique FEN by depth（`output/site/positions*.js` + `output/site/data/chessdb_ca
 
 | Depth | 來源檔 | 範圍 / 用途 | Rows |
 |---|---|---|---:|
-| 12 | `positions.js` | 全部 864 局棋譜、每一步的淺算分數（基線資料） | <!--auto-d12-->192,273<!--/auto-d12--> |
-| 22 | `positions_deep.js` | 公開 42 本書（不含中貴）每一個局面（`--full-public` 全掃，不再 \|d12\|>500 截斷）；滾動補完中，候選 ~109,869 | <!--auto-d22-->139,909<!--/auto-d22--> |
+| 12 | `positions.js` | 全部 884 局棋譜、每一步的淺算分數（基線資料） | <!--auto-d12-->192,273<!--/auto-d12--> |
+| 22 | `positions_deep.js` | 公開 62 本書（不含中貴）每一個局面（`--full-public` 全掃，不再 \|d12\|>500 截斷）；滾動補完中 | <!--auto-d22-->139,909<!--/auto-d22--> |
 | 28 | `positions_very_deep.js` | (a) 已偵測 trap 的前後兩格再深算驗證；(b) 順包/ 5 本 + 牛頭滾 2 本 ply≥15 全掃，同樣套 \|d12\|>500 截斷 | <!--auto-d28-->77,433<!--/auto-d28--> |
 | 32 | `positions_d32.js` | 順包/ 中 d28 已跑過的 FEN，再加深到 32 做交叉驗證（看 d28 結論穩不穩） | <!--auto-d32-->4,796<!--/auto-d32--> |
 | chessdb | `data/chessdb_cache.json` | 雲端 chessdb.cn 社群勝率資料，只查 ply 10–25 區間（雲端覆蓋密的範圍） | <!--auto-chessdb-->7,630<!--/auto-chessdb--> |
 
 **深算共通政策（2026-06-01 起）：**
 - 中貴棋譜/（822 本實戰書）只跑 d12，d22/d28/d32 全部跳過
-- 變例走到 |d12 score| > 500cp 那一步為止（含該步），後續局面不再深算 — 局勢已決，再算無分析價值。**例外**：公開 42 本的 d22 自 `abcca19` 起改 `--full-public`，整本全掃、不套此截斷（見第六節）；截斷仍適用於 d28/d32 sweep
+- 變例走到 |d12 score| > 500cp 那一步為止（含該步），後續局面不再深算 — 局勢已決，再算無分析價值。**例外**：公開 62 本的 d22 自 `abcca19` 起改 `--full-public`，整本全掃、不套此截斷（見第六節）；截斷仍適用於 d28/d32 sweep
 - d22 PV 只存前 10 步（Pikafish d22 PV 約前 10 步精準，後面飄）
 
 **公開站 positions_view.js 瘦身（2026-06-02）：**
@@ -107,7 +107,7 @@ d28 sweep 跑完後 d32 候選會擴張到 ~2,273（新 49 FEN）+ 還會隨後�
 |---|---|---|---|
 | `ChessBookNightlyBuild` | `nightly_build.ps1` | 排程未確認 | 重 render 全站 + push |
 | `ChessBookVerifyDepth28` | `verify_traps.py` | 21:00 daily | 對 <!--auto-traps-->2418<!--/auto-traps--> traps × 2 跑 d28 |
-| `ChessBookEnrichD22` | `run_enrich_d22.ps1` | 22:30 daily, `--max-hours 8`, `--full-public` | **公開 42 本每局面 d22 全掃**（滾動增量，候選隨灌譜成長；進度見第六節） |
+| `ChessBookEnrichD22` | `run_enrich_d22.ps1` | 22:30 daily, `--max-hours 8`, `--full-public` | **公開 62 本每局面 d22 全掃**（滾動增量，候選隨灌譜成長；進度見第六節） |
 | `ChessBookVerifyD28Shunbao` | `verify_d28_shunbao.py` | 22:30 daily（**已暫停**） | 順包/ + 牛頭滾 全 ply≥15 d28，d22 sweep 完後再啟用 |
 | `ChessBookVerifyD32` | `verify_d32.py` | 21:00 daily | 順包/ d28 entries 的 d32 cross-check |
 
@@ -127,7 +127,7 @@ Schtask 防電源管理：`WakeToRun=True`, `DisallowStartIfOnBatteries=False`, 
 >
 > **下週末待清（2026-06-22 dry-run）**：d28(traps) **1,325** FEN、d32 **323** FEN。屆時 `run_parallel.ps1 -Job traps` 再 `-Job d32`。（2026-06-19 的 `enrich_parallel.py`/`verify_parallel.py` 已收斂進 `parallel_runner.py`。）
 
-舊框架（「22,395 todo / 5-7 晚跑完」）已作廢：自 commit `abcca19` 起 EnrichD22 改 `--full-public`——目標是**公開 42 本每一個局面都補 d22**（不再只到 \|d12\|>500 截斷），且候選集隨每晚 20:00 SourceSync 灌新譜而成長，所以這是**持續性夜間增量**而非有固定終點的一次掃描。每晚 commit 訊息為「Enrich d22 nightly progress — public 42 books」。
+舊框架（「22,395 todo / 5-7 晚跑完」）已作廢：自 commit `abcca19` 起 EnrichD22 改 `--full-public`——目標是**公開 62 本每一個局面都補 d22**（不再只到 \|d12\|>500 截斷），且候選集隨每晚 20:00 SourceSync 灌新譜而成長，所以這是**持續性夜間增量**而非有固定終點的一次掃描。每晚 commit 訊息為「Enrich d22 nightly progress — public 42 books」。
 
 期間 ChessBookVerifyD28Shunbao 已暫停（避免 22:30 撞）。d22 全掃追平後再 `schtasks /Change /TN ChessBookVerifyD28Shunbao /ENABLE` 恢復。
 
