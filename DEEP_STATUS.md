@@ -64,23 +64,28 @@ d28 不是要做全庫 89832 FEN（CPU 太貴），而是**兩條互補路線**�
 對指定的精讀書全部 ply≥15 unique FEN 跑 d28（自 2026-06-30 起套 score-gated 早停
 decisive_cp=800 / movetime=600s，與 verify_d32 一致），找出 d22 沒發現、d28 才浮現的 trap。
 
-`TARGET_REL_KEYWORDS = ('順包\\', '牛頭滾', '半途列包\\')` — substring match on rel_path。
-`collect_target_fens()` 依 **keyword 優先序**回傳（不再全域 FEN 排序），所以較早的書先掃完才換下一本。
+`TARGET_REL_KEYWORDS = ('順包\\','牛頭滾','半途列包\\','左馬盤河\\','屏風馬棄馬局\\','高車保馬\\')`
+— substring match on rel_path（後 3 本 2026-07-22 加）。`collect_target_fens()` 依 **keyword 優先序**
+回傳（不再全域 FEN 排序），較早的書先掃完才換下一本。
 
-**✅ 2026-07-12 完工：** 順包 7 本 + 牛頭滾 2 本 + 半途列包 7 本的 route-(b) 全掃全部跑完，**todo=0**。
+**第一批 ✅ 2026-07-12 完工：** 順包 7 本 + 牛頭滾 2 本 + 半途列包 7 本 route-(b) 全掃跑完。
+**第二批 🔄 2026-07-22 加入（排週末 blitz）：** 左馬盤河 3 本 + 屏風馬棄馬局子樹 17 本 + 高車保馬 2 本。
 
-| 書 | route-(b) 候選 | d28 | 狀態 |
+| 書 | route-(b) 候選 | d28 todo | 狀態 |
 |---|---:|---:|---|
-| 順包/（7 本，含順包直車3兵對橫車邊馬 22k、順包橫車對直車 21k、…）| ~67,219 | 全數 | ✅ |
-| 牛頭滾（2 本）| 4,044 | 全數 | ✅ |
-| 半途列包/（7 本）| 3,977 | 3,977 | ✅ 100% |
-| **合計** | **~75,240** | — | **todo=0** |
+| 順包/（7 本，含順包直車3兵對橫車邊馬 22k、順包橫車對直車 21k、…）| ~67,219 | 0 | ✅ 完工 |
+| 牛頭滾（2 本）| 4,044 | 0 | ✅ 完工 |
+| 半途列包/（7 本）| 3,977 | 0 | ✅ 完工 |
+| 左馬盤河/（3 本）| 14,867 | 14,446 | 🔄 排 7/25 blitz |
+| 屏風馬棄馬局/（子樹 17 本）| 8,537 | 8,232 | 🔄 排 7/25 blitz |
+| 高車保馬/（2 本）| 2,359 | 2,244 | 🔄 排 7/25 blitz |
+| **第二批合計** | | **~24,697** | 一次性 `ChessBookD28BookWeekend` 週五 22:00、`-MaxHours 57` |
 
 歷程：2026-06-30 查出順包資料夾長大、route-(b) 落後約 **66,729 顆**；6/30 起夜跑 + 兩輪週末併行
 blitz（`run_parallel.ps1 -Job d28book`，+34,409 / +18,362）**約 2 週跑完**（原估 4 週～3 個月）。
 d28 由 ~10,704 → **77,433**，深掃額外撈出 **+458 個新陷阱**（1,960 → 2,418）。
-**`ChessBookVerifyD28Shunbao` 已於 2026-07-13 Disabled**（backlog 清完、避免夜間空轉）；日後有新書
-ingest 需再補時手動 `/ENABLE`。
+**`ChessBookVerifyD28Shunbao` 自 2026-07-13 Disabled**（第一批清完、夜間放空）；**第二批（2026-07-22 加的
+3 書組）改用週末一次性 blitz** `ChessBookD28BookWeekend`（見上表），夜間單實例維持停用。
 
 ### 3.3 全庫其他書
 
@@ -107,7 +112,7 @@ ingest 需再補時手動 `/ENABLE`。
 | `ChessBookNightlyBuild` | `nightly_build.ps1` | 排程未確認 | 重 render 全站 + push |
 | `ChessBookVerifyDepth28` | `verify_traps.py` | 21:00 daily | 對 <!--auto-traps-->2418<!--/auto-traps--> traps × 2 跑 d28 |
 | `ChessBookEnrichD22` | `run_enrich_d22.ps1` | 22:30 daily, `--max-hours 8`, `--full-public` | **公開 62 本每局面 d22 全掃**（滾動增量，候選隨灌譜成長；進度見第六節） |
-| `ChessBookVerifyD28Shunbao` | `verify_d28_shunbao.py` | 22:30 daily（**Disabled** 2026-07-13）| 順包/牛頭滾/半途列包 全 ply≥15 d28 — ✅ 已完工 todo=0 |
+| `ChessBookVerifyD28Shunbao` | `verify_d28_shunbao.py` | 22:30 daily（**Disabled**）| by-book d28（現 6 書組）。第一批(順包/牛頭滾/半途)✅完工；第二批(左馬盤河/屏風馬棄馬局/高車保馬 ~24.7k)改用週末 `ChessBookD28BookWeekend`(7/25 22:00) 跑 |
 | `ChessBookVerifyD32` | `verify_d32.py` | 21:00 daily（**Disabled** 2026-07-13）| 順包/半途 d28 entries 的 d32 cross-check（候選 66,879，暫停待命）|
 
 所有腳本：resumable, `--max-hours 8` 自我截止，跑完自動 `render_site.py` + `migrate_to_sqlite.py` + commit + push。
