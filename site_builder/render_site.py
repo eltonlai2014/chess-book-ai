@@ -502,6 +502,16 @@ STATUS_HTML = """<!DOCTYPE html>
 {cards}
 </div>
 
+<h2 class="dash-h2">各書組深算進度與完成狀況</h2>
+<p class="dash-note">資料驅動，每次轉檔自動更新。<b>深算 d22</b>＝公開全書滾動補完；<b>深度驗證 d28</b> 的全盤深掃只針對精讀書（★ 順包 / 半途列包；牛頭滾在主目錄），其餘書組的 d28 僅覆蓋陷阱前後格，比例偏低屬正常。百分比＝已算局面 ÷ 全部局面。</p>
+<table class="cov-table">
+<thead><tr><th>書組</th><th>局數</th><th>局面</th><th>深算 d22</th><th>深度驗證 d28</th></tr></thead>
+<tbody>
+{groups}
+</tbody>
+</table>
+<p class="dash-note">{d32line}</p>
+
 <h2 class="dash-h2">深度驗證進度</h2>
 <p class="dash-note">陷阱候選用 depth-28 覆核（確認 / 減弱 / 翻案）。下面是已覆核比例。</p>
 {progress}
@@ -511,10 +521,10 @@ STATUS_HTML = """<!DOCTYPE html>
 {findings}
 </div>
 
-<h2 class="dash-h2">各棋譜深算覆蓋</h2>
-<p class="dash-note">深算覆蓋＝該棋譜有多少局面已做深算（深度22）。100% 代表整局都深算過。</p>
+<h2 class="dash-h2">各棋譜分析狀態</h2>
+<p class="dash-note">每一棋譜的分析覆蓋。<b>深算 d22</b>＝該局多少局面做過深算（深度22）；<b>深度驗證 d28</b>＝多少做過深度28（精讀書全盤深掃 + 全站陷阱前後格）。</p>
 <table class="cov-table">
-<thead><tr><th>棋譜</th><th>變例</th><th>步</th><th>深算覆蓋</th><th>陷阱</th><th>妙手</th><th>決定性</th></tr></thead>
+<thead><tr><th>棋譜</th><th>變例</th><th>步</th><th>深算 d22</th><th>深度驗證 d28</th><th>陷阱</th><th>妙手</th><th>決定性</th></tr></thead>
 <tbody>
 {table}
 </tbody>
@@ -954,6 +964,7 @@ def compute_game_stats(game: dict, shallow: dict, deep: dict,
     decisive = 0
     fens_in_game = set()
     fens_with_deep = set()
+    fens_with_very_deep = set()
 
     for vi, plies in enumerate(game['variations']):
         for p in plies:
@@ -962,6 +973,8 @@ def compute_game_stats(game: dict, shallow: dict, deep: dict,
                 fens_in_game.add(fen)
                 if fen in deep:
                     fens_with_deep.add(fen)
+                if very_deep and fen in very_deep:
+                    fens_with_very_deep.add(fen)
         # decisive = mover at the final ply is losing by >300cp (in red-POV).
         final = _last_position_score(plies, deep, shallow)
         if final is not None and abs(final) > 300:
@@ -1031,6 +1044,8 @@ def compute_game_stats(game: dict, shallow: dict, deep: dict,
         'deep_coverage': (len(fens_with_deep) / n_fens) if n_fens else 0.0,
         'n_fens': n_fens,
         'n_deep': len(fens_with_deep),
+        'n_d28': len(fens_with_very_deep),
+        'd28_coverage': (len(fens_with_very_deep) / n_fens) if n_fens else 0.0,
     }
 
 
@@ -1499,6 +1514,46 @@ def render_status_page(updated: str, counts: dict, games: list,
         for lbl, num, sub in card_defs
     )
 
+    # --- 各書組深算完成度（資料驅動：每次 render 依實際 eval 覆蓋自動更新）---
+    grp = {}
+    for g in games:
+        key = _group_key(g.get('rel_path', g['file']))
+        st = stats_by_file.get(g['file']) or {}
+        d = grp.setdefault(key, {'games': 0, 'nfen': 0, 'nd22': 0, 'nd28': 0})
+        d['games'] += 1
+        d['nfen'] += st.get('n_fens', 0)
+        d['nd22'] += st.get('n_deep', 0)
+        d['nd28'] += st.get('n_d28', 0)
+
+    TARGET_D28 = ('順包', '半途列包')   # 精讀書 by-book d28 全掃對象（牛頭滾在主目錄）
+
+    def _bar(done, total):
+        pct = round(done / total * 100) if total else 0
+        cls = 'good' if pct >= 95 else ('partial' if pct >= 40 else 'low')
+        return (f'<span class="badge badge-deep deep-{cls}" '
+                f'title="{done:,} / {total:,} 局面">{pct}%</span>')
+
+    grp_order = sorted(grp.items(), key=lambda kv: (kv[0] != '主目錄', -kv[1]['nd28']))
+    group_rows = '\n'.join(
+        f'<tr><td class="cov-name">{key}'
+        f'{" ★精讀" if any(t in key for t in TARGET_D28) else ""}</td>'
+        f'<td>{d["games"]}</td><td>{d["nfen"]:,}</td>'
+        f'<td>{_bar(d["nd22"], d["nfen"])}</td>'
+        f'<td>{_bar(d["nd28"], d["nfen"])}</td></tr>'
+        for key, d in grp_order
+    )
+
+    # 交叉驗證 d32：done = 全站 d32 局面；候選 ≈ 順包+半途 的 d28 局面（暫停待命）
+    d32_done = counts.get('d32', 0)
+    d32_cand = sum(d['nd28'] for k, d in grp.items()
+                   if any(t in k for t in TARGET_D28))
+    d32_pct = round(d32_done / d32_cand * 100) if d32_cand else 0
+    d32line = (
+        f'<b>交叉驗證 d32</b>：{d32_done:,} 局面已加深 · 對象＝順包/半途的 d28 局面池 '
+        f'~{round(d32_cand / 1000)}k（{d32_pct}%）· <b>⏸ 暫停待命</b>'
+        f'（depth-32 更慢、UI 未呈現，2026-07-13 主人決定先停）'
+    )
+
     # --- d28 trap-verification progress ---
     verified = sum(
         1 for s in stats_by_file.values()
@@ -1544,11 +1599,18 @@ def render_status_page(updated: str, counts: dict, games: list,
         cls = 'good' if cpct >= 95 else ('partial' if cpct >= 50 else 'low')
         cov = (f'<span class="badge badge-deep deep-{cls}" '
                f'title="{st.get("n_deep", 0)} / {st.get("n_fens", 0)} 局面有深算">深 {cpct}%</span>')
+        d28c = st.get('d28_coverage') or 0.0
+        p28 = round(d28c * 100)
+        cls28 = 'good' if p28 >= 95 else ('partial' if p28 >= 40 else 'low')
+        cov28 = (f'<span class="badge badge-deep deep-{cls28}" '
+                 f'title="{st.get("n_d28", 0)} / {st.get("n_fens", 0)} 局面有深度驗證">驗 {p28}%</span>'
+                 if st.get('n_d28') else '<span class="cov-dash">·</span>')
         rows.append(
             f'<tr><td class="cov-name"><a href="games/{slug}.html">{title}</a></td>'
             f'<td>{len(g["variations"])}</td>'
             f'<td>{st.get("unique_plies", 0)}</td>'
             f'<td>{cov}</td>'
+            f'<td>{cov28}</td>'
             f'<td>{st.get("trap_count", 0) or "·"}</td>'
             f'<td>{st.get("brilliant_count", 0) or "·"}</td>'
             f'<td>{st.get("decisive_count", 0) or "·"}</td></tr>'
@@ -1557,6 +1619,8 @@ def render_status_page(updated: str, counts: dict, games: list,
     return STATUS_HTML.format(
         updated=updated,
         cards=cards,
+        groups=group_rows,
+        d32line=d32line,
         progress=progress,
         findings=findings,
         table='\n'.join(rows),
