@@ -2,7 +2,7 @@
 
 > 棋譜庫覆蓋率 + 深度計算進度的單一事實來源。更新規則見最後一節。
 >
-> Last updated: <!--auto-date-->2026-08-05<!--/auto-date-->
+> Last updated: <!--auto-date-->2026-08-06<!--/auto-date-->
 
 ## 一、棋譜庫總覽
 
@@ -24,8 +24,8 @@ unique FEN by depth（`output/site/positions*.js` + `output/site/data/chessdb_ca
 
 | Depth | 來源檔 | 範圍 / 用途 | Rows |
 |---|---|---|---:|
-| 12 | `positions.js` | 全部 884 局棋譜、每一步的淺算分數（基線資料） | <!--auto-d12-->192,273<!--/auto-d12--> |
-| 22 | `positions_deep.js` | 公開 62 本書（不含中貴）每一個局面（`--full-public` 全掃，不再 \|d12\|>500 截斷）；滾動補完中 | <!--auto-d22-->139,909<!--/auto-d22--> |
+| 12 | `positions.js` | 全部 884 局棋譜、每一步的淺算分數（基線資料） | <!--auto-d12-->202,897<!--/auto-d12--> |
+| 22 | `positions_deep.js` | 公開 62 本書（不含中貴）每一個局面（`--full-public` 全掃，不再 \|d12\|>500 截斷）；滾動補完中 | <!--auto-d22-->140,826<!--/auto-d22--> |
 | 28 | `positions_very_deep.js` | (a) 已偵測 trap 的前後兩格再深算驗證；(b) 精讀書（順包 7 本 + 牛頭滾 2 本 + 半途列包 7 本）ply≥15 全掃、套 \|d12\|>500 截斷 — ✅ 2026-07-12 完工 | <!--auto-d28-->102,130<!--/auto-d28--> |
 | 32 | `positions_d32.js` | 順包/ 中 d28 已跑過的 FEN，再加深到 32 做交叉驗證（看 d28 結論穩不穩） | <!--auto-d32-->4,796<!--/auto-d32--> |
 | chessdb | `data/chessdb_cache.json` | 雲端 chessdb.cn 社群勝率資料，只查 ply 10–25 區間（雲端覆蓋密的範圍） | <!--auto-chessdb-->7,630<!--/auto-chessdb--> |
@@ -113,7 +113,7 @@ d28 由 ~10,704 → **77,433**，深掃額外撈出 **+458 個新陷阱**（1,96
 | schtask | 腳本 | 排程 | 動作 |
 |---|---|---|---|
 | `ChessBookNightlyBuild` | `nightly_build.ps1` | 排程未確認 | 重 render 全站 + push |
-| `ChessBookVerifyDepth28` | `verify_traps.py` | 21:00 daily | 對 <!--auto-traps-->2594<!--/auto-traps--> traps × 2 跑 d28 |
+| `ChessBookVerifyDepth28` | `verify_traps.py` | 21:00 daily | 對 <!--auto-traps-->2602<!--/auto-traps--> traps × 2 跑 d28 |
 | `ChessBookEnrichD22` | `run_enrich_d22.ps1` | 22:30 daily, `--max-hours 8`, `--full-public` | **公開 62 本每局面 d22 全掃**（滾動增量，候選隨灌譜成長；進度見第六節） |
 | `ChessBookVerifyD28Shunbao` | `verify_d28_shunbao.py` | 22:30 daily（**Disabled**）| by-book d28（現 8 書組）。第一批(順包/牛頭滾/半途)✅、第二批(左馬盤河/屏風馬棄馬局/高車保馬)✅7/28；第三批(中砲對屏風馬×2, ~11.3k)排 `ChessBookD28BookWeekend`(8/7 22:00) |
 | `ChessBookVerifyD32` | `verify_d32.py` | 21:00 daily（**Disabled** 2026-07-13）| 順包/半途 d28 entries 的 d32 cross-check（候選 66,879，暫停待命）|
