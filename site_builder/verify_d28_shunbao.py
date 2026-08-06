@@ -35,10 +35,13 @@ POSITIONS_JS = OUT_DIR / "positions.js"
 #   '左馬盤河\\'   — 3 files (added 2026-07-22; ~14,446 new d28 candidates)
 #   '屏風馬棄馬局\\' — 整棵子樹 17 files (added 2026-07-22; ~8,232 new d28 candidates)
 #   '高車保馬\\'   — 2 files (added 2026-07-22; ~2,244 new d28 candidates)
+#   '中砲巡河車對屏風馬搶三卒' — top-level (added 2026-08-06; 主人擴充+~10.6k d12 FENs)
+#   '中砲三兵五八砲對屏風馬'   — top-level (added 2026-08-06)
 # Resume-safe across edits: already-evaluated FENs are skipped, so appending a
 # keyword just queues that book's FENs.
 TARGET_REL_KEYWORDS = ('順包\\', '牛頭滾', '半途列包\\',
-                       '左馬盤河\\', '屏風馬棄馬局\\', '高車保馬\\')
+                       '左馬盤河\\', '屏風馬棄馬局\\', '高車保馬\\',
+                       '中砲巡河車對屏風馬搶三卒', '中砲三兵五八砲對屏風馬')
 SKIP_OPENING_PLIES = 15  # mirror enrich_decisive / verify_traps / render_site
 DECISIVE_CUTOFF = 500    # mirror enrich_decisive — stop d28 sweep past first |d12|>500 ply
 
