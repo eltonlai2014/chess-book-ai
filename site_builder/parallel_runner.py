@@ -81,6 +81,31 @@ def atomic_write_text(path: Path, text: str):
     os.replace(tmp, path)
 
 
+def _merge_shards_into_cache(shard_files, cache_path: Path, var: str):
+    """Merge current shard files into cache_path (higher depth wins), atomically.
+
+    Safe to call repeatedly mid-run: workers atomic-write their shards every 5
+    FENs, so each read here sees a complete JSON. A shard caught mid-replace
+    (rare) just fails to parse and is retried next tick. Returns (total, added).
+    """
+    cache = load_positions(cache_path)
+    added = 0
+    for sf in shard_files:
+        if not Path(sf).exists():
+            continue
+        try:
+            entries = json.loads(Path(sf).read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        for fen, e in entries.items():
+            if fen not in cache or e.get("depth", 0) > cache[fen].get("depth", 0):
+                cache[fen] = e
+                added += 1
+    payload = json.dumps(cache, ensure_ascii=False, separators=(",", ":"))
+    atomic_write_text(cache_path, f"window.{var} = {payload};\n")
+    return len(cache), added
+
+
 # --------------------------------------------------------- work-lists ----
 def _d22_build_todo(depth):
     """Full-public d22 sweep, DFS-ordered (warm-TT locality)."""
@@ -235,23 +260,27 @@ def run_orchestrator(a):
             str(a.hash_mb), str(shard_files[i]), str(a.limit or 0),
             (str(a.max_hours) if a.max_hours else "-"),
         ]))
+    # Poll the workers, incrementally merging shards every MERGE_INTERVAL so a
+    # mid-run stop (master reclaiming the machine for overtime) strands at most
+    # one interval of work in output/_shards instead of the whole run. Before
+    # this the merge ran only after ALL workers exited cleanly, so a manual stop
+    # left everything unmerged until someone hand-ran a resume — the 7/25 + 8/7
+    # blitzes both hit this (8/7's ~11k sat stranded 10 days).
+    cache_out = Path(a.cache_out) if a.cache_out else job.cache
+    MERGE_INTERVAL = 20 * 60          # seconds
+    last_merge = time.time()
+    while any(p.poll() is None for p in procs):
+        time.sleep(15)
+        if time.time() - last_merge >= MERGE_INTERVAL:
+            total, added = _merge_shards_into_cache(shard_files, cache_out, job.var)
+            print(f"[merge+] incremental — {total} total (+{added})",
+                  file=sys.stderr, flush=True)
+            last_merge = time.time()
     rcs = [p.wait() for p in procs]
     print(f"[orch] workers exited rc={rcs}", file=sys.stderr)
 
-    cache = load_positions(job.cache)
-    added = 0
-    for sf in shard_files:
-        if not sf.exists():
-            print(f"[merge] WARN missing {sf.name}", file=sys.stderr)
-            continue
-        for fen, e in json.loads(sf.read_text(encoding="utf-8")).items():
-            if fen not in cache or e.get("depth", 0) > cache[fen].get("depth", 0):
-                cache[fen] = e
-                added += 1
-    cache_out = Path(a.cache_out) if a.cache_out else job.cache
-    payload = json.dumps(cache, ensure_ascii=False, separators=(",", ":"))
-    atomic_write_text(cache_out, f"window.{job.var} = {payload};\n")
-    print(f"[merge] wrote {cache_out} — {len(cache)} total (+{added})", file=sys.stderr)
+    total, added = _merge_shards_into_cache(shard_files, cache_out, job.var)
+    print(f"[merge] wrote {cache_out} — {total} total (+{added})", file=sys.stderr)
 
     if not a.no_post:
         job.post()

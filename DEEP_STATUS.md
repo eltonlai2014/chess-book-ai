@@ -90,7 +90,7 @@ blitz（`run_parallel.ps1 -Job d28book`，+34,409 / +18,362）**約 2 週跑完*
 d28 由 ~10,704 → **77,433**，深掃額外撈出 **+458 個新陷阱**（1,960 → 2,418）。
 **`ChessBookVerifyD28Shunbao` 自 2026-07-13 Disabled**（夜間放空）；**第二批之後新增的書組一律改用週末
 一次性 blitz** `ChessBookD28BookWeekend`（見上表；第一~三批皆✅完工），夜間單實例維持停用。
-（註：週末 blitz 若被中途停掉，算好的會卡在 `output/_shards/` 未 merge，需手動 `run_parallel.ps1 -Job d28book` resume 收尾——第二、三批都遇過。）
+（註：blitz 自 2026-08-17 起**每 ~20 分鐘增量 merge** 進 `positions_very_deep.js`，中途被主人停掉最多只損失最後 ~20 分鐘；殘餘 shard 仍可 `run_parallel.ps1 -Job d28book` resume 補完。此前只在全 worker 收工才 merge，第二、三批被停後各卡 shard 需手動 resume。）
 
 ### 3.3 全庫其他書
 
